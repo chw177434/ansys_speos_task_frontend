@@ -1,23 +1,64 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
-export async function submitTask(file: File, params: any) {
-  const fd = new FormData();
-  Object.keys(params).forEach((k) => {
-    fd.append(k, params[k]);
+type FetchOptions = RequestInit & { parseJson?: boolean };
+
+async function request<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  const { parseJson = true, headers, ...rest } = options;
+  const isFormData =
+    typeof FormData !== "undefined" && rest.body instanceof FormData;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(rest.body && !isFormData ? { "Content-Type": "application/json" } : {}),
+      ...headers,
+    },
+    ...rest,
   });
-  const res = await fetch(`${API_BASE}/tasks`, { method: "POST", body: fd });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const data = JSON.parse(text);
+      const detail = data?.detail || data?.message;
+      throw new Error(detail || text || res.statusText);
+    } catch (err) {
+      if (err instanceof Error) throw err;
+      throw new Error(text || res.statusText);
+    }
+  }
+
+  if (!parseJson) return undefined as T;
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+export interface CreateTaskResponse {
+  task_id: string;
+  status?: string;
+  message?: string | null;
+}
+
+export interface TaskStatusResponse {
+  task_id: string;
+  status: string;
+  message?: string | null;
+}
+
+export interface TaskOutputsResponse {
+  task_id: string;
+  files: Array<string | { name?: string; url?: string }>;
+}
+
+export async function createTask(formData: FormData) {
+  return request<CreateTaskResponse>("/tasks", {
+    method: "POST",
+    body: formData,
+  });
 }
 
 export async function getTaskStatus(taskId: string) {
-  const res = await fetch(`${API_BASE}/tasks/${taskId}`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return request<TaskStatusResponse>(`/tasks/${taskId}`);
 }
 
 export async function listOutputs(taskId: string) {
-  const res = await fetch(`${API_BASE}/tasks/${taskId}/outputs`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return request<TaskOutputsResponse>(`/tasks/${taskId}/outputs`);
 }
