@@ -37,7 +37,7 @@ interface TaskOutput {
   url: string;
 }
 
-type OutputApiEntry = TaskOutputsResponse["files"][number];
+type OutputApiEntry = string | { name?: string; url?: string };
 
 interface TaskItem {
   taskId: string;
@@ -45,15 +45,24 @@ interface TaskItem {
   message: string | null;
   outputs: TaskOutput[];
   outputsError: string | null;
+  downloadUrl: string | null;
+  downloadName: string | null;
   lastUpdated: string | null;
   updating: boolean;
   error: string | null;
 }
 
-interface StoredTask
-  extends Pick<TaskItem, "taskId" | "status" | "message" | "outputs" | "lastUpdated"> {}
+interface StoredTask {
+  taskId: string;
+  status: string;
+  message: string | null;
+  outputs: Array<OutputApiEntry | TaskOutput>;
+  lastUpdated: string | null;
+  downloadUrl?: string | null;
+  downloadName?: string | null;
+}
 
-function resolveDownloadUrl(raw: string) {
+function resolveDownloadUrl(raw: string | null | undefined) {
   const trimmed = raw?.trim();
   if (!trimmed) return "";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
@@ -68,33 +77,60 @@ function extractNameFromPath(path: string) {
   return segments[segments.length - 1] || sanitized || path || "下载文件";
 }
 
-function normalizeOutputs(entries: OutputApiEntry[] | undefined): TaskOutput[] {
-  if (!entries || entries.length === 0) return [];
+function normalizeOutputs(
+  entriesOrPayload?:
+    | OutputApiEntry[]
+    | Pick<TaskOutputsResponse, "files" | "file_entries">
+): TaskOutput[] {
+  if (!entriesOrPayload) return [];
 
-  const mapped = entries
-    .map((entry) => {
-      if (typeof entry === "string") {
-        const url = resolveDownloadUrl(entry);
-        const name = extractNameFromPath(entry);
-        if (!url) return null;
-        return { name, url } as TaskOutput;
+  const rawEntries: OutputApiEntry[] = [];
+  if (Array.isArray(entriesOrPayload)) {
+    rawEntries.push(...entriesOrPayload);
+  } else {
+    if (Array.isArray(entriesOrPayload.files)) {
+      rawEntries.push(...entriesOrPayload.files);
+    }
+    if (Array.isArray(entriesOrPayload.file_entries)) {
+      rawEntries.push(...entriesOrPayload.file_entries);
+    }
+  }
+
+  if (rawEntries.length === 0) return [];
+
+  const seen = new Set<string>();
+  const outputs: TaskOutput[] = [];
+
+  rawEntries.forEach((entry) => {
+    let item: TaskOutput | null = null;
+
+    if (typeof entry === "string") {
+      const url = resolveDownloadUrl(entry);
+      const name = extractNameFromPath(entry);
+      if (url) {
+        item = { name, url };
       }
-
-      if (entry && typeof entry === "object") {
-        const obj = entry as { name?: unknown; url?: unknown };
-        const rawUrl = typeof obj.url === "string" ? obj.url : "";
-        const rawName = typeof obj.name === "string" ? obj.name : "";
-        const url = resolveDownloadUrl(rawUrl || rawName);
-        const name = rawName || extractNameFromPath(rawUrl || rawName);
-        if (!url) return null;
-        return { name, url } as TaskOutput;
+    } else if (entry && typeof entry === "object") {
+      const obj = entry as { name?: unknown; url?: unknown };
+      const rawUrl = typeof obj.url === "string" ? obj.url : "";
+      const rawName = typeof obj.name === "string" ? obj.name : "";
+      const url = resolveDownloadUrl(rawUrl || rawName);
+      const name = rawName || extractNameFromPath(rawUrl || rawName);
+      if (url) {
+        item = { name, url };
       }
+    }
 
-      return null;
-    })
-    .filter((item): item is TaskOutput => Boolean(item));
+    if (item) {
+      const key = `${item.name}|${item.url}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        outputs.push(item);
+      }
+    }
+  });
 
-  return mapped;
+  return outputs;
 }
 
 function mergeTaskData(task: TaskItem, updates: Partial<TaskItem>): TaskItem {
@@ -166,6 +202,8 @@ export default function UploadForm() {
           message: null,
           outputs: [],
           outputsError: null,
+          downloadUrl: null,
+          downloadName: null,
           lastUpdated: null,
           updating: false,
           error: null,
@@ -190,11 +228,30 @@ export default function UploadForm() {
         const result = await getTaskStatus(trimmed);
         let outputs: TaskOutput[] = [];
         let outputsError: string | null = null;
+        let downloadUrl: string | null = null;
+        let downloadName: string | null = null;
+
+        const statusDownloadUrl = resolveDownloadUrl(result.download_url);
+        if (statusDownloadUrl) {
+          downloadUrl = statusDownloadUrl;
+          downloadName =
+            result.download_name ?? extractNameFromPath(statusDownloadUrl);
+        }
 
         if (result.status === "SUCCESS") {
           try {
             const output = await listOutputs(trimmed);
-            outputs = normalizeOutputs(output.files);
+            outputs = normalizeOutputs(output);
+            const outputDownloadUrl = resolveDownloadUrl(
+              output.download_url ?? result.download_url
+            );
+            if (outputDownloadUrl) {
+              downloadUrl = outputDownloadUrl;
+              downloadName =
+                output.download_name ??
+                result.download_name ??
+                extractNameFromPath(outputDownloadUrl);
+            }
           } catch (err) {
             outputs = [];
             outputsError =
@@ -207,6 +264,8 @@ export default function UploadForm() {
           message: result.message ?? null,
           outputs,
           outputsError,
+          downloadUrl,
+          downloadName,
           lastUpdated: new Date().toISOString(),
           updating: false,
           error: null,
@@ -247,18 +306,40 @@ export default function UploadForm() {
       const parsed = JSON.parse(raw) as StoredTask[];
       if (!Array.isArray(parsed)) return;
 
-      const restored = parsed.map<TaskItem>((item) => ({
-        taskId: item.taskId,
-        status: item.status || DEFAULT_STATUS,
-        message: item.message ?? null,
-        outputs: normalizeOutputs(
-          Array.isArray(item.outputs) ? (item.outputs as OutputApiEntry[]) : []
-        ),
-        outputsError: null,
-        lastUpdated: item.lastUpdated ?? null,
-        updating: false,
-        error: null,
-      }));
+      const restored = parsed.map<TaskItem>((item) => {
+        const outputs = Array.isArray(item.outputs)
+          ? normalizeOutputs(item.outputs as OutputApiEntry[])
+          : [];
+        const legacy = item as Record<string, unknown>;
+        const rawDownloadUrl =
+          (typeof item.downloadUrl === "string" && item.downloadUrl)
+            ? item.downloadUrl
+            : (typeof legacy.download_url === "string"
+                ? (legacy.download_url as string)
+                : "");
+        const resolvedDownloadUrl = resolveDownloadUrl(rawDownloadUrl);
+        const downloadName =
+          (typeof item.downloadName === "string" && item.downloadName)
+            ? item.downloadName
+            : (typeof legacy.download_name === "string"
+                ? (legacy.download_name as string)
+                : (resolvedDownloadUrl
+                    ? extractNameFromPath(resolvedDownloadUrl)
+                    : null));
+
+        return {
+          taskId: item.taskId,
+          status: item.status || DEFAULT_STATUS,
+          message: item.message ?? null,
+          outputs,
+          outputsError: null,
+          downloadUrl: resolvedDownloadUrl || null,
+          downloadName: downloadName ?? null,
+          lastUpdated: item.lastUpdated ?? null,
+          updating: false,
+          error: null,
+        };
+      });
 
       setTasks(restored);
       if (restored[0]) {
@@ -278,6 +359,8 @@ export default function UploadForm() {
       message: task.message,
       outputs: task.outputs,
       lastUpdated: task.lastUpdated,
+      downloadUrl: task.downloadUrl,
+      downloadName: task.downloadName,
     }));
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [tasks]);
@@ -342,6 +425,8 @@ export default function UploadForm() {
         message: result.message ?? null,
         outputs: [],
         outputsError: null,
+        downloadUrl: null,
+        downloadName: null,
         lastUpdated: new Date().toISOString(),
       });
 
@@ -362,6 +447,8 @@ export default function UploadForm() {
       outputs: [],
       outputsError: null,
       error: null,
+      downloadUrl: null,
+      downloadName: null,
     });
     await refreshTaskStatus(id);
   };
@@ -598,6 +685,23 @@ export default function UploadForm() {
                 {task.outputsError && !task.error && (
                   <div className="mt-3 rounded-md bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
                     {task.outputsError}
+                  </div>
+                )}
+
+                {task.downloadUrl && !task.error && (
+                  <div className="mt-3">
+                    <a
+                      href={task.downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      下载结果压缩包
+                      <span className="text-xs text-gray-500">
+                        {task.downloadName || extractNameFromPath(task.downloadUrl)}
+                      </span>
+                    </a>
                   </div>
                 )}
 

@@ -41,11 +41,17 @@ export interface TaskStatusResponse {
   task_id: string;
   status: string;
   message?: string | null;
+  download_url?: string | null;
+  download_name?: string | null;
 }
 
 export interface TaskOutputsResponse {
   task_id: string;
+  base_dir?: string | null;
   files: Array<string | { name?: string; url?: string }>;
+  file_entries?: Array<{ name?: string; url?: string }>;
+  download_url?: string | null;
+  download_name?: string | null;
 }
 
 export async function createTask(formData: FormData) {
