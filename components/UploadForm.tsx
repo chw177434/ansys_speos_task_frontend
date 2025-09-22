@@ -62,6 +62,26 @@ interface StoredTask {
   downloadName?: string | null;
 }
 
+interface NormalizeOutputsOptions {
+  taskId?: string;
+}
+
+function buildOutputUrl(rawPath: string | null | undefined, taskId?: string) {
+  const value = typeof rawPath === "string" ? rawPath.trim() : "";
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || value.startsWith("/tasks/")) return value;
+  const normalized = value.replace(/^[/\\.]+/, "").replace(/\\/g, "/");
+  if (!normalized) return "";
+  if (normalized.startsWith("tasks/")) return `/${normalized}`;
+  if (!taskId) return normalized;
+  const encoded = normalized
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `/tasks/${taskId}/outputs/${encoded}`;
+}
+
 function resolveDownloadUrl(raw: string | null | undefined) {
   const trimmed = raw?.trim();
   if (!trimmed) return "";
@@ -80,7 +100,8 @@ function extractNameFromPath(path: string) {
 function normalizeOutputs(
   entriesOrPayload?:
     | OutputApiEntry[]
-    | Pick<TaskOutputsResponse, "files" | "file_entries">
+    | Pick<TaskOutputsResponse, "files" | "file_entries">,
+  options: NormalizeOutputsOptions = {}
 ): TaskOutput[] {
   if (!entriesOrPayload) return [];
 
@@ -100,13 +121,15 @@ function normalizeOutputs(
 
   const seen = new Set<string>();
   const outputs: TaskOutput[] = [];
+  const { taskId } = options;
 
   rawEntries.forEach((entry) => {
     let item: TaskOutput | null = null;
 
     if (typeof entry === "string") {
-      const url = resolveDownloadUrl(entry);
-      const name = extractNameFromPath(entry);
+      const candidate = buildOutputUrl(entry, taskId);
+      const url = resolveDownloadUrl(candidate || entry);
+      const name = extractNameFromPath(candidate || entry);
       if (url) {
         item = { name, url };
       }
@@ -114,15 +137,16 @@ function normalizeOutputs(
       const obj = entry as { name?: unknown; url?: unknown };
       const rawUrl = typeof obj.url === "string" ? obj.url : "";
       const rawName = typeof obj.name === "string" ? obj.name : "";
-      const url = resolveDownloadUrl(rawUrl || rawName);
-      const name = rawName || extractNameFromPath(rawUrl || rawName);
+      const candidate = buildOutputUrl(rawUrl || rawName, taskId);
+      const url = resolveDownloadUrl(candidate || rawUrl || rawName);
+      const name = rawName || extractNameFromPath(candidate || rawUrl || rawName);
       if (url) {
         item = { name, url };
       }
     }
 
     if (item) {
-      const key = `${item.name}|${item.url}`;
+      const key = item.url || item.name;
       if (!seen.has(key)) {
         seen.add(key);
         outputs.push(item);
@@ -241,7 +265,7 @@ export default function UploadForm() {
         if (result.status === "SUCCESS") {
           try {
             const output = await listOutputs(trimmed);
-            outputs = normalizeOutputs(output);
+            outputs = normalizeOutputs(output, { taskId: trimmed });
             const outputDownloadUrl = resolveDownloadUrl(
               output.download_url ?? result.download_url
             );
@@ -308,9 +332,9 @@ export default function UploadForm() {
 
       const restored = parsed.map<TaskItem>((item) => {
         const outputs = Array.isArray(item.outputs)
-          ? normalizeOutputs(item.outputs as OutputApiEntry[])
+          ? normalizeOutputs(item.outputs as OutputApiEntry[], { taskId: item.taskId })
           : [];
-        const legacy = item as Record<string, unknown>;
+        const legacy = item as unknown as Record<string, unknown>;
         const rawDownloadUrl =
           (typeof item.downloadUrl === "string" && item.downloadUrl)
             ? item.downloadUrl
