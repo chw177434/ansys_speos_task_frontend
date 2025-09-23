@@ -12,6 +12,17 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
 const DEFAULT_OUTPUT_NAME = "下载文件";
 const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILURE", "FAILED", "REVOKED"]);
+const STATUS_FILTER_OPTIONS = [
+  "",
+  "PENDING",
+  "STARTED",
+  "RETRY",
+  "RECEIVED",
+  "SUCCESS",
+  "FAILURE",
+  "FAILED",
+  "REVOKED",
+];
 
 interface RawTask {
   task_id: string;
@@ -204,6 +215,56 @@ export default function TasksTable() {
   const [error, setError] = useState<string | null>(null);
   const [pagingMode, setPagingMode] = useState<"unknown" | "server" | "client">("unknown");
 
+  const [nameFilter, setNameFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const isClientPaging = pagingMode === "client" && Array.isArray(allRows);
+
+  const baseRows = useMemo(() => {
+    if (isClientPaging && allRows) {
+      return allRows;
+    }
+    return rows;
+  }, [isClientPaging, allRows, rows]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedName = nameFilter.trim().toLowerCase();
+    const normalizedStatus = statusFilter.trim();
+
+    return baseRows.filter((task) => {
+      const jobName = (task.job_name || "").toLowerCase();
+      const matchesName =
+        normalizedName === "" ||
+        jobName.includes(normalizedName) ||
+        task.task_id.toLowerCase().includes(normalizedName);
+
+      const matchesStatus = normalizedStatus === "" || task.status === normalizedStatus;
+      return matchesName && matchesStatus;
+    });
+  }, [baseRows, nameFilter, statusFilter]);
+
+  const paginatedRows = useMemo(() => {
+    if (isClientPaging) {
+      return sliceRows(filteredRows, page, pageSize);
+    }
+    return filteredRows;
+  }, [filteredRows, isClientPaging, page, pageSize]);
+
+  const displayTotal = filteredRows.length;
+
+  const displayTotalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(displayTotal / Math.max(pageSize, 1)));
+  }, [displayTotal, pageSize]);
+
+  useEffect(() => {
+    if (isClientPaging) {
+      const maxPage = Math.max(1, Math.ceil(filteredRows.length / Math.max(pageSize, 1)));
+      if (page > maxPage) {
+        setPage(maxPage);
+      }
+    }
+  }, [filteredRows.length, isClientPaging, page, pageSize]);
+
   const totalPages = useMemo(() => {
     const count = Math.max(total, 0);
     return Math.max(1, Math.ceil(count / Math.max(pageSize, 1)));
@@ -318,12 +379,12 @@ export default function TasksTable() {
   }, [fetchTasks]);
 
   useEffect(() => {
-    rows.forEach((task) => {
+    baseRows.forEach((task) => {
       if (task.status === "SUCCESS" && !task.outputsFetched && !task.outputsLoading) {
         void fetchOutputsForTask(task.task_id);
       }
     });
-  }, [rows, fetchOutputsForTask]);
+  }, [baseRows, fetchOutputsForTask]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -339,10 +400,10 @@ export default function TasksTable() {
   }, [fetchTasks, pageSize]);
 
   useEffect(() => {
-    const hasPending = rows.some((task) => !TERMINAL_STATUSES.has(task.status));
+    const hasPending = baseRows.some((task) => !TERMINAL_STATUSES.has(task.status));
     if (!hasPending) return;
 
-    const targetPage = pagingMode === "client" ? 1 : page;
+    const targetPage = isClientPaging ? 1 : page;
     const timer = window.setInterval(() => {
       void fetchTasks(targetPage, pageSize);
     }, 5000);
@@ -350,42 +411,40 @@ export default function TasksTable() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [rows, pagingMode, page, pageSize, fetchTasks]);
+  }, [baseRows, fetchTasks, isClientPaging, page, pageSize]);
 
   const handleRefresh = useCallback(() => {
-    const targetPage = pagingMode === "client" ? 1 : page;
+    const targetPage = isClientPaging ? 1 : page;
     void fetchTasks(targetPage, pageSize);
-  }, [fetchTasks, page, pageSize, pagingMode]);
+  }, [fetchTasks, isClientPaging, page, pageSize]);
 
   const handlePageChange = useCallback(
     (nextPage: number) => {
       if (nextPage < 1) return;
-      if (pagingMode === "server") {
+      if (!isClientPaging) {
         if (nextPage === page) return;
         void fetchTasks(nextPage, pageSize);
-      } else if (allRows) {
-        const maxPage = Math.max(1, Math.ceil(allRows.length / pageSize));
+      } else {
+        const maxPage = Math.max(1, Math.ceil(filteredRows.length / Math.max(pageSize, 1)));
         if (nextPage > maxPage) return;
         setPage(nextPage);
-        setRows(sliceRows(allRows, nextPage, pageSize));
       }
     },
-    [pagingMode, fetchTasks, page, pageSize, allRows]
+    [fetchTasks, filteredRows.length, isClientPaging, page, pageSize]
   );
 
   const handlePageSizeChange = useCallback(
     (size: number) => {
       if (size === pageSize) return;
-      if (pagingMode === "server" || pagingMode === "unknown") {
+      if (!isClientPaging) {
         setPageSize(size);
         void fetchTasks(1, size);
-      } else if (allRows) {
+      } else {
         setPageSize(size);
         setPage(1);
-        setRows(sliceRows(allRows, 1, size));
       }
     },
-    [pagingMode, fetchTasks, allRows, pageSize]
+    [fetchTasks, isClientPaging, pageSize]
   );
 
   const handleDelete = useCallback(
@@ -398,18 +457,14 @@ export default function TasksTable() {
 
       try {
         await deleteTask(taskId);
-        if (pagingMode === "server" || pagingMode === "unknown") {
+        if (!isClientPaging) {
           const nextPage = Math.max(1, Math.min(page, totalPages));
           await fetchTasks(nextPage, pageSize);
         } else {
           setAllRows((current) => {
             if (!current) return current;
             const nextAll = current.filter((task) => task.task_id !== taskId);
-            const nextTotal = nextAll.length;
-            const nextPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / pageSize)));
-            setTotal(nextTotal);
-            setPage(nextPage);
-            setRows(sliceRows(nextAll, nextPage, pageSize));
+            setTotal(nextAll.length);
             return nextAll;
           });
         }
@@ -422,7 +477,7 @@ export default function TasksTable() {
         }));
       }
     },
-    [applyTaskUpdate, pagingMode, fetchTasks, page, pageSize, totalPages]
+    [applyTaskUpdate, fetchTasks, isClientPaging, page, pageSize, totalPages]
   );
 
   const renderBody = () => {
@@ -446,7 +501,7 @@ export default function TasksTable() {
       );
     }
 
-    if (rows.length === 0) {
+    if (paginatedRows.length === 0) {
       return (
         <tr>
           <td className="px-3 py-10 text-center text-sm text-gray-500" colSpan={5}>
@@ -456,7 +511,7 @@ export default function TasksTable() {
       );
     }
 
-    return rows.map((task) => {
+    return paginatedRows.map((task) => {
       const createdAt = task.created_at
         ? new Date(task.created_at * 1000).toLocaleString()
         : "-";
@@ -523,19 +578,56 @@ export default function TasksTable() {
   };
 
   return (
-    <div className="flex h-[520px] flex-col rounded-xl bg-white p-4 shadow">
+    <div className="flex h-[580px] flex-col rounded-xl bg-white p-4 shadow">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">任务列表</h2>
           <p className="text-sm text-gray-500">查看任务状态、下载结果文件并可删除任务。</p>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
-          disabled={loading}
-        >
-          刷新
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600" htmlFor="task-name-filter">
+              任务名称
+            </label>
+            <input
+              id="task-name-filter"
+              value={nameFilter}
+              onChange={(event) => {
+                setPage(1);
+                setNameFilter(event.target.value);
+              }}
+              placeholder="输入关键词"
+              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600" htmlFor="task-status-filter">
+              状态
+            </label>
+            <select
+              id="task-status-filter"
+              value={statusFilter}
+              onChange={(event) => {
+                setPage(1);
+                setStatusFilter(event.target.value);
+              }}
+              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {STATUS_FILTER_OPTIONS.map((value) => (
+                <option key={value || "all"} value={value}>
+                  {value === "" ? "全部状态" : value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+            disabled={loading}
+          >
+            刷新
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 flex-1 overflow-hidden">
@@ -556,7 +648,7 @@ export default function TasksTable() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
-        <div>共 {total} 条记录</div>
+        <div>共 {displayTotal} 条记录</div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2">
             <span>每页</span>
@@ -581,12 +673,12 @@ export default function TasksTable() {
               上一页
             </button>
             <span>
-              第 {page} / {totalPages} 页
+              第 {page} / {displayTotalPages} 页
             </span>
             <button
               className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => handlePageChange(page + 1)}
-              disabled={loading || page >= totalPages}
+              disabled={loading || page >= displayTotalPages}
             >
               下一页
             </button>
@@ -596,3 +688,5 @@ export default function TasksTable() {
     </div>
   );
 }
+
+
