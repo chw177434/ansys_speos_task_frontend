@@ -1,0 +1,598 @@
+﻿"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  API_BASE,
+  deleteTask,
+  listOutputs,
+  type TaskOutputsResponse,
+} from "../lib/api";
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_OUTPUT_NAME = "下载文件";
+const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILURE", "FAILED", "REVOKED"]);
+
+interface RawTask {
+  task_id: string;
+  status: string;
+  created_at?: number;
+  job_name?: string | null;
+  download_url?: string | null;
+  download_name?: string | null;
+}
+
+interface TaskOutput {
+  name: string;
+  url: string;
+}
+
+interface TableTask extends RawTask {
+  outputs: TaskOutput[];
+  outputsFetched: boolean;
+  outputsLoading: boolean;
+  outputsError: string | null;
+  deleting: boolean;
+  actionError: string | null;
+}
+
+type TasksApiResponse =
+  | {
+      items?: RawTask[];
+      total?: number;
+      count?: number;
+      page?: number;
+      page_size?: number;
+    }
+  | RawTask[];
+
+function ensureArray(payload: TasksApiResponse): RawTask[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (payload && Array.isArray(payload.items)) {
+    return payload.items;
+  }
+  return [];
+}
+
+function buildOutputUrl(raw: string | null | undefined, taskId: string): string {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const base = API_BASE.replace(/\/+$/, "");
+  if (value.startsWith("/")) {
+    return `${base}${value}`;
+  }
+
+  const normalized = value.replace(/^[/\\.]+/, "").replace(/\\/g, "/");
+  if (!normalized) return "";
+
+  if (normalized.startsWith("tasks/")) {
+    return `${base}/${normalized}`;
+  }
+
+  const encoded = normalized
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  return `${base}/tasks/${taskId}/outputs/${encoded}`;
+}
+
+function fileNameFromPath(path: string | null | undefined): string {
+  if (!path) return DEFAULT_OUTPUT_NAME;
+  const sanitized = path.split(/[?#]/)[0] ?? path;
+  const segments = sanitized.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || sanitized || DEFAULT_OUTPUT_NAME;
+}
+
+function outputsFromDownload(
+  taskId: string,
+  downloadUrl?: string | null,
+  downloadName?: string | null
+): TaskOutput[] {
+  const url = buildOutputUrl(downloadUrl, taskId);
+  if (!url) return [];
+  const name = downloadName?.trim() || fileNameFromPath(downloadUrl) || DEFAULT_OUTPUT_NAME;
+  return [{ name, url }];
+}
+
+function normalizeOutputsResponse(response: TaskOutputsResponse, taskId: string): TaskOutput[] {
+  const outputs: TaskOutput[] = [];
+  const seen = new Set<string>();
+
+  const addOutput = (url: string | null | undefined, name?: string | null) => {
+    const absolute = buildOutputUrl(url, taskId);
+    if (!absolute || seen.has(absolute)) return;
+    seen.add(absolute);
+    outputs.push({
+      url: absolute,
+      name: name?.trim() || fileNameFromPath(url) || DEFAULT_OUTPUT_NAME,
+    });
+  };
+
+  const { files, file_entries, download_url, download_name } = response;
+  if (Array.isArray(files)) {
+    files.forEach((entry) => {
+      if (typeof entry === "string") {
+        addOutput(entry);
+      } else if (entry && typeof entry === "object") {
+        const candidate =
+          (typeof entry.url === "string" && entry.url) ||
+          (typeof entry.name === "string" && entry.name) ||
+          "";
+        addOutput(candidate, typeof entry.name === "string" ? entry.name : undefined);
+      }
+    });
+  }
+
+  if (Array.isArray(file_entries)) {
+    file_entries.forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      const candidate =
+        (typeof entry.url === "string" && entry.url) ||
+        (typeof entry.name === "string" && entry.name) ||
+        "";
+      addOutput(candidate, typeof entry.name === "string" ? entry.name : undefined);
+    });
+  }
+
+  addOutput(download_url ?? undefined, download_name ?? undefined);
+
+  return outputs;
+}
+
+function mergeOutputs(existing: TaskOutput[], extras: TaskOutput[]): TaskOutput[] {
+  if (extras.length === 0) return existing;
+  const map = new Map<string, TaskOutput>();
+  [...existing, ...extras].forEach((item) => {
+    if (item.url) {
+      map.set(item.url, item);
+    }
+  });
+  return Array.from(map.values());
+}
+
+function sliceRows(rows: TableTask[], page: number, size: number): TableTask[] {
+  const start = (page - 1) * size;
+  return rows.slice(start, start + size);
+}
+
+function createRows(items: RawTask[]): TableTask[] {
+  return items.map((item) => {
+    const initialOutputs = outputsFromDownload(item.task_id, item.download_url, item.download_name);
+    const shouldFetchOutputs = item.status === "SUCCESS";
+    return {
+      ...item,
+      outputs: initialOutputs,
+      outputsFetched: !shouldFetchOutputs,
+      outputsLoading: false,
+      outputsError: null,
+      deleting: false,
+      actionError: null,
+    };
+  });
+}
+
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case "SUCCESS":
+      return "bg-green-100 text-green-700";
+    case "STARTED":
+    case "RETRY":
+    case "RECEIVED":
+      return "bg-yellow-100 text-yellow-700";
+    case "FAILURE":
+    case "FAILED":
+    case "REVOKED":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
+}
+
+export default function TasksTable() {
+  const [rows, setRows] = useState<TableTask[]>([]);
+  const [allRows, setAllRows] = useState<TableTask[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagingMode, setPagingMode] = useState<"unknown" | "server" | "client">("unknown");
+
+  const totalPages = useMemo(() => {
+    const count = Math.max(total, 0);
+    return Math.max(1, Math.ceil(count / Math.max(pageSize, 1)));
+  }, [total, pageSize]);
+
+  const applyTaskUpdate = useCallback(
+    (taskId: string, updater: (task: TableTask) => TableTask) => {
+      setRows((current) => current.map((task) => (task.task_id === taskId ? updater(task) : task)));
+      setAllRows((current) =>
+        current ? current.map((task) => (task.task_id === taskId ? updater(task) : task)) : current
+      );
+    },
+    []
+  );
+
+  const fetchOutputsForTask = useCallback(
+    async (taskId: string) => {
+      applyTaskUpdate(taskId, (task) => ({
+        ...task,
+        outputsLoading: true,
+        outputsError: null,
+      }));
+
+      try {
+        const response = await listOutputs(taskId);
+        const normalized = normalizeOutputsResponse(response, taskId);
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          outputs: mergeOutputs(task.outputs, normalized),
+          outputsFetched: true,
+          outputsLoading: false,
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "获取输出失败";
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          outputsFetched: true,
+          outputsLoading: false,
+          outputsError: message,
+        }));
+      }
+    },
+    [applyTaskUpdate]
+  );
+
+  const fetchTasks = useCallback(
+    async (targetPage: number, targetSize: number) => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const query = new URLSearchParams();
+        query.set("page", String(targetPage));
+        query.set("page_size", String(targetSize));
+
+        const response = await fetch(`${API_BASE}/tasks?${query.toString()}`);
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || response.statusText || "任务列表加载失败");
+        }
+
+        const data = (await response.json()) as TasksApiResponse;
+        const items = ensureArray(data);
+        const rowsFromServer = createRows(items);
+        const totalCount =
+          (typeof (data as { total?: number }).total === "number" && (data as { total: number }).total) ||
+          (typeof (data as { count?: number }).count === "number" && (data as { count: number }).count) ||
+          rowsFromServer.length;
+        const serverPage =
+          typeof (data as { page?: number }).page === "number"
+            ? (data as { page: number }).page
+            : targetPage;
+        const serverSize =
+          typeof (data as { page_size?: number }).page_size === "number"
+            ? (data as { page_size: number }).page_size
+            : targetSize;
+        const supportsServerPaging =
+          typeof (data as { page?: number }).page === "number" ||
+          typeof (data as { page_size?: number }).page_size === "number" ||
+          typeof (data as { total?: number }).total === "number" ||
+          typeof (data as { count?: number }).count === "number";
+
+        if (supportsServerPaging) {
+          setPagingMode("server");
+          setAllRows(null);
+          setRows(rowsFromServer);
+          setPage(serverPage);
+          setPageSize(serverSize);
+          setTotal(totalCount);
+        } else {
+          setPagingMode("client");
+          setAllRows(rowsFromServer);
+          setTotal(rowsFromServer.length);
+          setPage(targetPage);
+          setPageSize(targetSize);
+          setRows(sliceRows(rowsFromServer, targetPage, targetSize));
+        }
+      } catch (err) {
+        console.error("加载任务列表失败", err);
+        setError(err instanceof Error ? err.message : "任务列表加载失败");
+        setRows([]);
+        setTotal(0);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void fetchTasks(1, DEFAULT_PAGE_SIZE);
+  }, [fetchTasks]);
+
+  useEffect(() => {
+    rows.forEach((task) => {
+      if (task.status === "SUCCESS" && !task.outputsFetched && !task.outputsLoading) {
+        void fetchOutputsForTask(task.task_id);
+      }
+    });
+  }, [rows, fetchOutputsForTask]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handler = () => {
+      void fetchTasks(1, pageSize);
+    };
+
+    window.addEventListener("speos-task-created", handler);
+    return () => {
+      window.removeEventListener("speos-task-created", handler);
+    };
+  }, [fetchTasks, pageSize]);
+
+  useEffect(() => {
+    const hasPending = rows.some((task) => !TERMINAL_STATUSES.has(task.status));
+    if (!hasPending) return;
+
+    const targetPage = pagingMode === "client" ? 1 : page;
+    const timer = window.setInterval(() => {
+      void fetchTasks(targetPage, pageSize);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [rows, pagingMode, page, pageSize, fetchTasks]);
+
+  const handleRefresh = useCallback(() => {
+    const targetPage = pagingMode === "client" ? 1 : page;
+    void fetchTasks(targetPage, pageSize);
+  }, [fetchTasks, page, pageSize, pagingMode]);
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      if (nextPage < 1) return;
+      if (pagingMode === "server") {
+        if (nextPage === page) return;
+        void fetchTasks(nextPage, pageSize);
+      } else if (allRows) {
+        const maxPage = Math.max(1, Math.ceil(allRows.length / pageSize));
+        if (nextPage > maxPage) return;
+        setPage(nextPage);
+        setRows(sliceRows(allRows, nextPage, pageSize));
+      }
+    },
+    [pagingMode, fetchTasks, page, pageSize, allRows]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (size: number) => {
+      if (size === pageSize) return;
+      if (pagingMode === "server" || pagingMode === "unknown") {
+        setPageSize(size);
+        void fetchTasks(1, size);
+      } else if (allRows) {
+        setPageSize(size);
+        setPage(1);
+        setRows(sliceRows(allRows, 1, size));
+      }
+    },
+    [pagingMode, fetchTasks, allRows, pageSize]
+  );
+
+  const handleDelete = useCallback(
+    async (taskId: string) => {
+      applyTaskUpdate(taskId, (task) => ({
+        ...task,
+        deleting: true,
+        actionError: null,
+      }));
+
+      try {
+        await deleteTask(taskId);
+        if (pagingMode === "server" || pagingMode === "unknown") {
+          const nextPage = Math.max(1, Math.min(page, totalPages));
+          await fetchTasks(nextPage, pageSize);
+        } else {
+          setAllRows((current) => {
+            if (!current) return current;
+            const nextAll = current.filter((task) => task.task_id !== taskId);
+            const nextTotal = nextAll.length;
+            const nextPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / pageSize)));
+            setTotal(nextTotal);
+            setPage(nextPage);
+            setRows(sliceRows(nextAll, nextPage, pageSize));
+            return nextAll;
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "删除任务失败";
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          deleting: false,
+          actionError: message,
+        }));
+      }
+    },
+    [applyTaskUpdate, pagingMode, fetchTasks, page, pageSize, totalPages]
+  );
+
+  const renderBody = () => {
+    if (loading) {
+      return (
+        <tr>
+          <td className="px-3 py-10 text-center text-sm text-gray-500" colSpan={5}>
+            加载中...
+          </td>
+        </tr>
+      );
+    }
+
+    if (error) {
+      return (
+        <tr>
+          <td className="px-3 py-10 text-center text-sm text-red-500" colSpan={5}>
+            {error}
+          </td>
+        </tr>
+      );
+    }
+
+    if (rows.length === 0) {
+      return (
+        <tr>
+          <td className="px-3 py-10 text-center text-sm text-gray-500" colSpan={5}>
+            暂无任务
+          </td>
+        </tr>
+      );
+    }
+
+    return rows.map((task) => {
+      const createdAt = task.created_at
+        ? new Date(task.created_at * 1000).toLocaleString()
+        : "-";
+      const badgeClass = statusBadgeClass(task.status);
+
+      return (
+        <tr key={task.task_id} className="border-b last:border-b-0 align-top">
+          <td className="px-3 py-2 font-medium text-gray-800">
+            <div className="whitespace-normal break-words">{task.job_name || "-"}</div>
+          </td>
+          <td className="px-3 py-2 font-mono text-xs text-gray-600 align-top">
+            <div className="break-all leading-5">{task.task_id}</div>
+          </td>
+          <td className="px-3 py-2 text-center align-top">
+            <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
+              {task.status}
+            </span>
+            <div className="mt-2 text-xs text-gray-500">{createdAt}</div>
+          </td>
+          <td className="px-3 py-2 text-sm text-gray-700 align-top">{createdAt}</td>
+          <td className="px-3 py-2 align-top">
+            {task.outputsLoading ? (
+              <span className="text-sm text-gray-500">结果加载中...</span>
+            ) : task.outputs.length > 0 ? (
+              <div className="flex flex-col gap-1 text-sm">
+                {task.outputs.map((output) => (
+                  <a
+                    key={`${task.task_id}-${output.url}`}
+                    href={output.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="break-all text蓝-600 hover:text-blue-700 hover:underline"
+                  >
+                    {output.name}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <span className="text-sm text-gray-400">暂无可下载文件</span>
+            )}
+
+            {task.outputsError && (
+              <div className="mt-1 text-xs text-red-500">{task.outputsError}</div>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <button
+                onClick={() => handleDelete(task.task_id)}
+                disabled={task.deleting}
+                className="rounded border border-red-200 px-3 py-1 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {task.deleting ? "删除中..." : "删除任务"}
+              </button>
+            </div>
+
+            {task.actionError && (
+              <div className="mt-1 text-xs text-red-500">{task.actionError}</div>
+            )}
+          </td>
+        </tr>
+      );
+    });
+  };
+
+  return (
+    <div className="flex h-[520px] flex-col rounded-xl bg-white p-4 shadow">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">任务列表</h2>
+          <p className="text-sm text-gray-500">查看任务状态、下载结果文件并可删除任务。</p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+          disabled={loading}
+        >
+          刷新
+        </button>
+      </div>
+
+      <div className="mt-4 flex-1 overflow-hidden">
+        <div className="h-full overflow-x-auto overflow-y-auto rounded-lg border">
+          <table className="min-w-full table-fixed text-sm">
+            <thead className="bg-gray-100 text-gray-600">
+              <tr>
+                <th className="w-56 px-3 py-2 text-left">任务名称</th>
+                <th className="w-56 px-3 py-2 text-left">Task ID</th>
+                <th className="w-36 px-3 py-2">状态</th>
+                <th className="w-44 px-3 py-2">提交时间</th>
+                <th className="px-3 py-2 text-left">结果文件</th>
+              </tr>
+            </thead>
+            <tbody className="align-top">{renderBody()}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+        <div>共 {total} 条记录</div>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2">
+            <span>每页</span>
+            <select
+              value={pageSize}
+              onChange={(event) => handlePageSizeChange(Number(event.target.value))}
+              className="rounded border px-2 py-1 text-sm"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={loading || page <= 1}
+            >
+              上一页
+            </button>
+            <span>
+              第 {page} / {totalPages} 页
+            </span>
+            <button
+              className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => handlePageChange(page + 1)}
+              disabled={loading || page >= totalPages}
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
