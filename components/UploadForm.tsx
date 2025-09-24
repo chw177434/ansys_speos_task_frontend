@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { createTask, type CreateTaskResponse } from "../lib/api";
+import JSZip from "jszip";
 
 const FORM_STATE_KEY = "speos_task_form_state";
 
@@ -224,14 +225,16 @@ export default function UploadForm() {
     formData.append("master_file", masterFile, masterFile.name);
 
     if (filteredIncludeFiles.length > 0) {
+      const zip = new JSZip();
       filteredIncludeFiles.forEach((file) => {
-        const relativePath = file.webkitRelativePath;
-        formData.append(
-          "include_files",
-          file,
-          relativePath && relativePath.length > 0 ? relativePath : file.name
-        );
+        const relPath = file.webkitRelativePath || file.name;
+        zip.file(relPath, file);
       });
+    
+      const content = await zip.generateAsync({ type: "blob" });
+      const zipName = `${includeFolderLabel || "include"}.zip`;
+      formData.append("include_archive", content, zipName);
+      formData.append("include_path", includeFolderLabel || "include");
     }
 
     const projectDirValue = projectDir.trim();

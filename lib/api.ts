@@ -1,5 +1,5 @@
-export const DEFAULT_API_BASE = "http://14.103.81.67:8089";
-// export const DEFAULT_API_BASE = "http://localhost:8000";
+// export const DEFAULT_API_BASE = "http://14.103.81.67:8089";
+export const DEFAULT_API_BASE = "http://localhost:8000";
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || DEFAULT_API_BASE;
 
 type FetchOptions = RequestInit & { parseJson?: boolean };
