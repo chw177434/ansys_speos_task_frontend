@@ -139,6 +139,32 @@ export default function UploadForm() {
     node.setAttribute("directory", "true");
   }, []);
 
+  const resetForm = useCallback(() => {
+    setProfileName(DEFAULT_FORM_STATE.profileName);
+    setVersion(DEFAULT_FORM_STATE.version);
+    setJobName(DEFAULT_FORM_STATE.jobName);
+    setProjectDir(DEFAULT_FORM_STATE.projectDir);
+    setUseGpu(Boolean(DEFAULT_FORM_STATE.useGpu));
+    setSimulationIndex(DEFAULT_FORM_STATE.simulationIndex ?? "0");
+    setThreadCount(DEFAULT_FORM_STATE.threadCount ?? "");
+    setPriority(DEFAULT_FORM_STATE.priority ?? "2");
+    setRayCount(DEFAULT_FORM_STATE.rayCount ?? "");
+    setDurationMinutes(DEFAULT_FORM_STATE.durationMinutes ?? "");
+    setHpcJobName(DEFAULT_FORM_STATE.hpcJobName ?? "");
+    setNodeCount(DEFAULT_FORM_STATE.nodeCount ?? "1");
+    setWalltimeHours(DEFAULT_FORM_STATE.walltimeHours ?? "");
+    setMasterFile(null);
+    setIncludeFiles(null);
+    setShowAdvanced(false);
+    if (masterInputRef.current) {
+      masterInputRef.current.value = "";
+    }
+    if (includeDirectoryInputRef.current) {
+      includeDirectoryInputRef.current.value = "";
+    }
+    saveFormState({ ...DEFAULT_FORM_STATE });
+  }, []);
+
   useEffect(() => {
     saveFormState({
       profileName,
@@ -294,14 +320,7 @@ export default function UploadForm() {
         status: result.status,
         message: result.message ?? null,
       });
-      setMasterFile(null);
-      setIncludeFiles(null);
-      if (masterInputRef.current) {
-        masterInputRef.current.value = "";
-      }
-      if (includeDirectoryInputRef.current) {
-        includeDirectoryInputRef.current.value = "";
-      }
+      resetForm();
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("speos-task-created", {
