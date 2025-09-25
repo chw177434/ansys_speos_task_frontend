@@ -45,6 +45,8 @@ export interface TaskStatusResponse {
   message?: string | null;
   download_url?: string | null;
   download_name?: string | null;
+  duration?: number | null;
+  elapsed_seconds?: number | null;
 }
 
 export interface TaskOutputsResponse {
