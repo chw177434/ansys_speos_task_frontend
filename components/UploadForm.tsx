@@ -8,7 +8,17 @@ import {
   useRef,
   useState,
 } from "react";
-import { createTask, type CreateTaskResponse } from "../lib/api";
+import {
+  createTask,
+  initUpload,
+  uploadToTOS,
+  confirmUpload,
+  formatSpeed,
+  formatTime,
+  formatFileSize,
+  type CreateTaskResponse,
+  type UploadProgressInfo,
+} from "../lib/api";
 import JSZip from "jszip";
 
 const FORM_STATE_KEY = "speos_task_form_state";
@@ -129,6 +139,33 @@ export default function UploadForm() {
     message?: string | null;
   } | null>(null);
 
+  // TOS 上传相关状态
+  const [uploadStep, setUploadStep] = useState<string>("");
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [masterProgress, setMasterProgress] = useState<number>(0);
+  const [includeProgress, setIncludeProgress] = useState<number>(0);
+  const [uploadSpeed, setUploadSpeed] = useState<number>(0);
+  const [estimatedTime, setEstimatedTime] = useState<number>(0);
+  
+  // 取消上传控制器
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 上传历史记录
+  interface UploadHistoryItem {
+    id: string;
+    jobName: string;
+    fileName: string;
+    fileSize: number;
+    status: "uploading" | "success" | "failed" | "cancelled";
+    progress: number;
+    taskId?: string;
+    timestamp: number;
+    errorMessage?: string;
+  }
+
+  const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
+  const currentUploadIdRef = useRef<string | null>(null);
+
   const masterInputRef = useRef<HTMLInputElement | null>(null);
   const includeDirectoryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -234,15 +271,164 @@ export default function UploadForm() {
   const includeFilesCount = filteredIncludeFiles.length;
   const masterFileLabel = masterFile?.name ?? "";
 
+  // 同步当前上传进度到历史记录
+  useEffect(() => {
+    if (currentUploadIdRef.current && uploadProgress > 0 && uploadProgress < 100) {
+      setUploadHistory((prev) =>
+        prev.map((item) =>
+          item.id === currentUploadIdRef.current && item.status === "uploading"
+            ? { ...item, progress: uploadProgress }
+            : item
+        )
+      );
+    }
+  }, [uploadProgress]);
+
+  const handleCancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // 更新历史记录为已取消
+    if (currentUploadIdRef.current) {
+      setUploadHistory((prev) =>
+        prev.map((item) =>
+          item.id === currentUploadIdRef.current
+            ? { ...item, status: "cancelled" as const, progress: uploadProgress }
+            : item
+        )
+      );
+    }
+    
+    setSubmitting(false);
+    setUploadStep("");
+    setUploadProgress(0);
+    setMasterProgress(0);
+    setIncludeProgress(0);
+    setUploadSpeed(0);
+    setEstimatedTime(0);
+    currentUploadIdRef.current = null;
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
     setSubmitInfo(null);
+    setUploadStep("");
+    setUploadProgress(0);
+    setMasterProgress(0);
+    setIncludeProgress(0);
+    setUploadSpeed(0);
+    setEstimatedTime(0);
 
     if (!masterFile) {
       setFormError("请上传 Master File 文件");
       return;
     }
+    
+    // 创建上传记录
+    const uploadId = `upload_${Date.now()}`;
+    currentUploadIdRef.current = uploadId;
+    
+    const newHistoryItem: UploadHistoryItem = {
+      id: uploadId,
+      jobName: jobName.trim(),
+      fileName: masterFile.name,
+      fileSize: masterFile.size,
+      status: "uploading",
+      progress: 0,
+      timestamp: Date.now(),
+    };
+    
+    setUploadHistory((prev) => [newHistoryItem, ...prev].slice(0, 5)); // 只保留最近5条
+    
+    // 创建新的 AbortController
+    abortControllerRef.current = new AbortController();
+
+    // 准备 include 文件（如果有）
+    let includeZip: Blob | null = null;
+    if (filteredIncludeFiles.length > 0) {
+      const zip = new JSZip();
+      filteredIncludeFiles.forEach((file) => {
+        const relPath = file.webkitRelativePath || file.name;
+        zip.file(relPath, file);
+      });
+      includeZip = await zip.generateAsync({ type: "blob" });
+    }
+
+    // 文件大小阈值：50MB
+    const FILE_SIZE_THRESHOLD = 50 * 1024 * 1024;
+    const masterFileSize = masterFile.size;
+    const includeFileSize = includeZip?.size || 0;
+    const totalSize = masterFileSize + includeFileSize;
+
+    // 判断是否使用新流程
+    const useNewFlow = totalSize >= FILE_SIZE_THRESHOLD;
+
+    // 大文件警告（100MB 以上）
+    if (totalSize > 100 * 1024 * 1024) {
+      const sizeInMB = Math.round(totalSize / 1024 / 1024);
+      const confirmed = window.confirm(
+        `文件较大（${sizeInMB} MB），上传可能需要较长时间，是否继续？`
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setSubmitting(true);
+
+    try {
+      if (useNewFlow) {
+        // ========== 新流程：TOS 三步上传 ==========
+        await handleNewFlowUpload(masterFile, includeZip);
+      } else {
+        // ========== 旧流程：直接上传 ==========
+        await handleOldFlowUpload(masterFile, includeZip);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "提交任务失败";
+      
+      // 更新历史记录状态
+      if (currentUploadIdRef.current) {
+        setUploadHistory((prev) =>
+          prev.map((item) =>
+            item.id === currentUploadIdRef.current
+              ? {
+                  ...item,
+                  status: message === "上传已取消" ? ("cancelled" as const) : ("failed" as const),
+                  progress: uploadProgress,
+                  errorMessage: message !== "上传已取消" ? message : undefined,
+                }
+              : item
+          )
+        );
+      }
+      
+      // 如果是取消操作，不显示为错误
+      if (message !== "上传已取消") {
+        setFormError(message);
+      }
+    } finally {
+      setSubmitting(false);
+      setUploadStep("");
+      setUploadProgress(0);
+      setMasterProgress(0);
+      setIncludeProgress(0);
+      setUploadSpeed(0);
+      setEstimatedTime(0);
+      abortControllerRef.current = null;
+      currentUploadIdRef.current = null;
+    }
+  };
+
+  // 旧流程：直接上传
+  const handleOldFlowUpload = async (
+    masterFile: File,
+    includeZip: Blob | null
+  ) => {
+    setUploadStep("正在提交任务...");
 
     const formData = new FormData();
     formData.append("profile_name", profileName.trim());
@@ -250,16 +436,9 @@ export default function UploadForm() {
     formData.append("job_name", jobName.trim());
     formData.append("master_file", masterFile, masterFile.name);
 
-    if (filteredIncludeFiles.length > 0) {
-      const zip = new JSZip();
-      filteredIncludeFiles.forEach((file) => {
-        const relPath = file.webkitRelativePath || file.name;
-        zip.file(relPath, file);
-      });
-    
-      const content = await zip.generateAsync({ type: "blob" });
+    if (includeZip) {
       const zipName = `${includeFolderLabel || "include"}.zip`;
-      formData.append("include_archive", content, zipName);
+      formData.append("include_archive", includeZip, zipName);
       formData.append("include_path", includeFolderLabel || "include");
     }
 
@@ -312,27 +491,186 @@ export default function UploadForm() {
       formData.append("walltime_hours", trimmedWalltime);
     }
 
-    setSubmitting(true);
-    try {
-      const result: CreateTaskResponse = await createTask(formData);
-      setSubmitInfo({
-        taskId: result.task_id,
-        status: result.status,
-        message: result.message ?? null,
+    const result: CreateTaskResponse = await createTask(formData);
+    
+    // 更新历史记录为成功
+    if (currentUploadIdRef.current) {
+      setUploadHistory((prev) =>
+        prev.map((item) =>
+          item.id === currentUploadIdRef.current
+            ? { ...item, status: "success" as const, progress: 100, taskId: result.task_id }
+            : item
+        )
+      );
+    }
+    
+    setSubmitInfo({
+      taskId: result.task_id,
+      status: result.status,
+      message: result.message ?? null,
+    });
+    resetForm();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("speos-task-created", {
+          detail: { taskId: result.task_id },
+        })
+      );
+    }
+  };
+
+  // 新流程：TOS 三步上传
+  const handleNewFlowUpload = async (
+    masterFile: File,
+    includeZip: Blob | null
+  ) => {
+    // 步骤 1: 初始化上传（获取预签名 URL）
+    setUploadStep("📝 初始化上传...");
+    const initData = await initUpload({
+      filename: masterFile.name,
+      file_size: masterFile.size,
+      file_type: "master",
+      content_type: masterFile.type || "application/octet-stream",
+      job_name: jobName.trim(),
+      submitter: "用户", // 可以根据实际情况修改
+    });
+
+    const taskId = initData.task_id;
+    const masterUploadInfo = initData.master_upload;
+
+    if (!masterUploadInfo) {
+      throw new Error("未获取到 master 文件上传 URL");
+    }
+
+    // 步骤 2a: 上传 Master 文件到 TOS
+    setUploadStep("⬆️ 上传 Master 文件...");
+    await uploadToTOS(
+      masterUploadInfo.upload_url,
+      masterFile,
+      (info: UploadProgressInfo) => {
+        setMasterProgress(info.progress);
+        setUploadSpeed(info.speed);
+        setEstimatedTime(info.estimatedTime);
+        if (includeZip) {
+          setUploadProgress(Math.round(info.progress * 0.6)); // master 占 60%
+        } else {
+          setUploadProgress(info.progress);
+        }
+      },
+      abortControllerRef.current?.signal
+    );
+
+    // 步骤 2b: 如果有 include 文件，也上传
+    let includeObjectKey: string | undefined;
+    if (includeZip) {
+      setUploadStep("⬆️ 上传 Include 文件...");
+
+      // 初始化 include 上传
+      const includeInitData = await initUpload({
+        filename: `${includeFolderLabel || "include"}.zip`,
+        file_size: includeZip.size,
+        file_type: "include",
+        content_type: "application/zip",
+        job_name: jobName.trim(),
+        submitter: "用户",
       });
-      resetForm();
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("speos-task-created", {
-            detail: { taskId: result.task_id },
-          })
+
+      const includeUploadInfo = includeInitData.include_upload;
+      if (includeUploadInfo) {
+        await uploadToTOS(
+          includeUploadInfo.upload_url,
+          includeZip,
+          (info: UploadProgressInfo) => {
+            setIncludeProgress(info.progress);
+            setUploadSpeed(info.speed);
+            setEstimatedTime(info.estimatedTime);
+            setUploadProgress(60 + Math.round(info.progress * 0.3)); // include 占 30%
+          },
+          abortControllerRef.current?.signal
         );
+        includeObjectKey = includeUploadInfo.object_key;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "提交任务失败";
-      setFormError(message);
-    } finally {
-      setSubmitting(false);
+    }
+
+    // 步骤 3: 确认上传完成
+    setUploadStep("✅ 提交任务...");
+    setUploadProgress(90);
+
+    const confirmData = await confirmUpload({
+      task_id: taskId,
+      master_object_key: masterUploadInfo.object_key,
+      include_object_key: includeObjectKey,
+      job_name: jobName.trim(),
+      submitter: "用户",
+      profile_name: profileName.trim(),
+      version: version.trim(),
+      project_dir: projectDir.trim() || undefined,
+      use_gpu: useGpu || undefined,
+      simulation_index: simulationIndex.trim() || undefined,
+      thread_count: threadCount.trim() || undefined,
+      priority: priority.trim() || undefined,
+      ray_count: rayCount.trim() || undefined,
+      duration_minutes: durationMinutes.trim() || undefined,
+      hpc_job_name: hpcJobName.trim() || undefined,
+      node_count: nodeCount.trim() || undefined,
+      walltime_hours: walltimeHours.trim() || undefined,
+    });
+
+    setUploadProgress(100);
+    setUploadStep("🎉 完成！");
+
+    // 更新历史记录为成功
+    if (currentUploadIdRef.current) {
+      setUploadHistory((prev) =>
+        prev.map((item) =>
+          item.id === currentUploadIdRef.current
+            ? { ...item, status: "success" as const, progress: 100, taskId: confirmData.task_id }
+            : item
+        )
+      );
+    }
+
+    setSubmitInfo({
+      taskId: confirmData.task_id,
+      status: confirmData.status,
+      message: confirmData.message ?? null,
+    });
+
+    resetForm();
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("speos-task-created", {
+          detail: { taskId: confirmData.task_id },
+        })
+      );
+    }
+  };
+
+  const getStatusColor = (status: UploadHistoryItem["status"]) => {
+    switch (status) {
+      case "uploading": return "text-blue-700 bg-blue-50";
+      case "success": return "text-green-700 bg-green-50";
+      case "failed": return "text-red-700 bg-red-50";
+      case "cancelled": return "text-gray-700 bg-gray-50";
+    }
+  };
+
+  const getStatusIcon = (status: UploadHistoryItem["status"]) => {
+    switch (status) {
+      case "uploading": return "⏳";
+      case "success": return "✅";
+      case "failed": return "❌";
+      case "cancelled": return "🚫";
+    }
+  };
+
+  const getStatusText = (status: UploadHistoryItem["status"]) => {
+    switch (status) {
+      case "uploading": return "上传中";
+      case "success": return "成功";
+      case "failed": return "失败";
+      case "cancelled": return "已取消";
     }
   };
 
@@ -344,6 +682,57 @@ export default function UploadForm() {
           填写任务信息并上传 Master File（必选）与 Include 文件夹（可选），提交后任务会自动出现在右侧列表中。
         </p>
       </header>
+
+      {/* 上传历史记录 */}
+      {uploadHistory.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50">
+          <div className="px-4 py-2 border-b border-slate-200">
+            <h3 className="text-sm font-medium text-slate-700">上传历史</h3>
+          </div>
+          <div className="divide-y divide-slate-200 max-h-48 overflow-y-auto">
+            {uploadHistory.map((item) => (
+              <div key={item.id} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-900 truncate">
+                        {item.jobName || item.fileName}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
+                        {getStatusIcon(item.status)} {getStatusText(item.status)}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {item.fileName} ({formatFileSize(item.fileSize)})
+                      {item.taskId && (
+                        <span className="ml-2 font-mono">ID: {item.taskId}</span>
+                      )}
+                    </div>
+                    {item.status === "uploading" && item.progress > 0 && (
+                      <div className="mt-2">
+                        <div className="h-1 w-full overflow-hidden rounded-full bg-blue-200">
+                          <div
+                            className="h-full bg-blue-600 transition-all duration-300"
+                            style={{ width: `${item.progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {item.errorMessage && (
+                      <div className="mt-1 text-xs text-red-600">
+                        {item.errorMessage}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0 text-xs text-slate-400">
+                    {new Date(item.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5 overflow-auto pr-1">
         <div className="grid gap-4">
@@ -551,6 +940,61 @@ export default function UploadForm() {
             </div>
           )}
         </div>
+
+        {/* 上传进度显示 */}
+        {submitting && uploadStep && (
+          <div className="space-y-3 rounded-md bg-blue-50 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-blue-900">{uploadStep}</span>
+              {uploadProgress > 0 && (
+                <span className="text-sm font-semibold text-blue-700">{uploadProgress}%</span>
+              )}
+            </div>
+
+            {uploadProgress > 0 && (
+              <div className="h-2 w-full overflow-hidden rounded-full bg-blue-200">
+                <div
+                  className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            )}
+
+            {/* 速度和剩余时间显示 */}
+            {uploadSpeed > 0 && uploadProgress < 100 && (
+              <div className="flex items-center justify-between text-xs text-blue-700">
+                <span>速度: {formatSpeed(uploadSpeed)}</span>
+                <span>剩余时间: {formatTime(estimatedTime)}</span>
+              </div>
+            )}
+
+            {/* 详细进度 */}
+            <div className="space-y-1">
+              {masterProgress > 0 && masterProgress < 100 && (
+                <div className="text-xs text-blue-700">
+                  Master 文件: {masterProgress}%
+                </div>
+              )}
+
+              {includeProgress > 0 && includeProgress < 100 && (
+                <div className="text-xs text-blue-700">
+                  Include 文件: {includeProgress}%
+                </div>
+              )}
+            </div>
+
+            {/* 取消按钮 */}
+            {uploadProgress < 100 && (
+              <button
+                type="button"
+                onClick={handleCancelUpload}
+                className="w-full rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                取消上传
+              </button>
+            )}
+          </div>
+        )}
 
         {formError && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>

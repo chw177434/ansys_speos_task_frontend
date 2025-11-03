@@ -351,15 +351,35 @@ export default function TasksTable() {
 
         const response = await fetch(`${API_BASE}/tasks?${query.toString()}`);
         if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || response.statusText || "任务列表加载失败");
+          let errorMessage = "任务列表加载失败";
+          try {
+            const text = await response.text();
+            // 尝试解析 JSON 错误信息
+            try {
+              const errorData = JSON.parse(text);
+              errorMessage = errorData?.detail || errorData?.message || text || response.statusText;
+            } catch {
+              errorMessage = text || response.statusText;
+            }
+          } catch {
+            errorMessage = response.statusText || "网络请求失败";
+          }
+          throw new Error(errorMessage);
         }
 
-        const data = (await response.json()) as TasksApiResponse;
+        let data: TasksApiResponse;
+        try {
+          data = (await response.json()) as TasksApiResponse;
+        } catch (parseError) {
+          console.error("解析响应数据失败", parseError);
+          throw new Error("服务器返回了无效的数据格式");
+        }
+
         const items = ensureArray(data);
 
         const rowsFromServer = createRows(items);
         const fetchMoment = Date.now();
+        
         setStatusTimestamps((current) => {
           const next: StatusTimestampMap = {};
           rowsFromServer.forEach((item) => {
@@ -374,6 +394,7 @@ export default function TasksTable() {
           });
           return next;
         });
+        
         const totalCount =
           (typeof (data as { total?: number }).total === "number" && (data as { total: number }).total) ||
           (typeof (data as { count?: number }).count === "number" && (data as { count: number }).count) ||
@@ -408,10 +429,21 @@ export default function TasksTable() {
           setRows(sliceRows(rowsFromServer, targetPage, targetSize));
         }
       } catch (err) {
-        console.error("加载任务列表失败", err);
-        setError(err instanceof Error ? err.message : "任务列表加载失败");
+        // 改为更友好的错误处理，避免在开发环境中显示红色错误
+        const errorMessage = err instanceof Error ? err.message : "任务列表加载失败";
+        console.warn("加载任务列表时出现问题:", errorMessage);
+        
+        // 如果是网络错误或连接问题，给出更友好的提示
+        if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+          setError("无法连接到服务器，请检查网络连接或确认后端服务是否运行");
+        } else {
+          setError(errorMessage);
+        }
+        
+        // 即使出错也要设置空数据，避免界面卡住
         setRows([]);
         setTotal(0);
+        setPagingMode("unknown");
       } finally {
         setLoading(false);
       }
@@ -607,7 +639,7 @@ export default function TasksTable() {
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="break-all text蓝-600 hover:text-blue-700 hover:underline"
+                    className="break-all text-blue-600 hover:text-blue-700 hover:underline"
                   >
                     {output.name}
                   </a>
