@@ -11,17 +11,31 @@ import {
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
 const DEFAULT_OUTPUT_NAME = "下载文件";
-const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILURE", "FAILED", "REVOKED"]);
+
+// 终止状态：任务已结束，不再需要轮询
+const TERMINAL_STATUSES = new Set([
+  "SUCCESS",      // 成功
+  "FAILURE",      // 失败
+  "FAILED",       // 失败（Celery标准）
+  "REVOKED",      // 已撤销
+  "CANCELLED",    // 已取消（英式）
+  "CANCELED",     // 已取消（美式）
+  "ABORTED",      // 已中止
+]);
+
+// 状态筛选选项：按用户关注度排序
 const STATUS_FILTER_OPTIONS = [
-  "",
-  "PENDING",
-  "STARTED",
-  "RETRY",
-  "RECEIVED",
-  "SUCCESS",
-  "FAILURE",
-  "FAILED",
-  "REVOKED",
+  { value: "", label: "全部状态" },
+  { value: "RUNNING", label: "🔵 运行中" },
+  { value: "PENDING", label: "🟡 等待中" },
+  { value: "SUCCESS", label: "🟢 成功" },
+  { value: "FAILURE", label: "🔴 失败" },
+  { value: "DOWNLOADING", label: "📥 下载中" },
+  { value: "STARTED", label: "🔵 启动中" },
+  { value: "PROGRESS", label: "🔵 执行中" },
+  { value: "RETRY", label: "🟡 重试中" },
+  { value: "CANCELLED", label: "⚫ 已取消" },
+  { value: "REVOKED", label: "⚫ 已撤销" },
 ];
 
 interface RawTask {
@@ -244,21 +258,164 @@ function formatDuration(totalSecondsInput: number): string {
   return parts.join("");
 }
 
+// 状态信息定义：包含图标、文案、颜色、分类
+interface StatusInfo {
+  icon: string;
+  label: string;
+  color: string;
+  bgColor: string;
+  category: "waiting" | "running" | "success" | "failed" | "cancelled";
+  description?: string;
+}
+
+const STATUS_INFO_MAP: Record<string, StatusInfo> = {
+  // 等待状态
+  PENDING: {
+    icon: "⏳",
+    label: "等待中",
+    color: "text-yellow-700",
+    bgColor: "bg-yellow-100",
+    category: "waiting",
+    description: "任务已创建，等待执行",
+  },
+  
+  // 下载状态（TOS模式）
+  DOWNLOADING: {
+    icon: "📥",
+    label: "下载中",
+    color: "text-blue-700",
+    bgColor: "bg-blue-100",
+    category: "running",
+    description: "正在从对象存储下载文件",
+  },
+  
+  // 运行状态
+  STARTED: {
+    icon: "🚀",
+    label: "启动中",
+    color: "text-blue-700",
+    bgColor: "bg-blue-100",
+    category: "running",
+    description: "任务已启动",
+  },
+  RUNNING: {
+    icon: "▶️",
+    label: "运行中",
+    color: "text-blue-700",
+    bgColor: "bg-blue-100",
+    category: "running",
+    description: "任务正在执行",
+  },
+  PROGRESS: {
+    icon: "⚙️",
+    label: "执行中",
+    color: "text-blue-700",
+    bgColor: "bg-blue-100",
+    category: "running",
+    description: "任务执行中（带进度）",
+  },
+  RETRY: {
+    icon: "🔄",
+    label: "重试中",
+    color: "text-orange-700",
+    bgColor: "bg-orange-100",
+    category: "running",
+    description: "任务正在重试",
+  },
+  
+  // 成功状态
+  SUCCESS: {
+    icon: "✅",
+    label: "成功",
+    color: "text-green-700",
+    bgColor: "bg-green-100",
+    category: "success",
+    description: "任务执行成功",
+  },
+  
+  // 失败状态
+  FAILURE: {
+    icon: "❌",
+    label: "失败",
+    color: "text-red-700",
+    bgColor: "bg-red-100",
+    category: "failed",
+    description: "任务执行失败",
+  },
+  FAILED: {
+    icon: "❌",
+    label: "失败",
+    color: "text-red-700",
+    bgColor: "bg-red-100",
+    category: "failed",
+    description: "任务执行失败",
+  },
+  
+  // 取消状态
+  REVOKED: {
+    icon: "🚫",
+    label: "已撤销",
+    color: "text-gray-700",
+    bgColor: "bg-gray-100",
+    category: "cancelled",
+    description: "任务已被撤销",
+  },
+  CANCELLED: {
+    icon: "⛔",
+    label: "已取消",
+    color: "text-gray-700",
+    bgColor: "bg-gray-100",
+    category: "cancelled",
+    description: "任务已取消",
+  },
+  CANCELED: {
+    icon: "⛔",
+    label: "已取消",
+    color: "text-gray-700",
+    bgColor: "bg-gray-100",
+    category: "cancelled",
+    description: "任务已取消",
+  },
+  ABORTED: {
+    icon: "🛑",
+    label: "已中止",
+    color: "text-gray-700",
+    bgColor: "bg-gray-100",
+    category: "cancelled",
+    description: "任务已中止",
+  },
+  
+  // 其他未知状态
+  RECEIVED: {
+    icon: "📨",
+    label: "已接收",
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+    category: "waiting",
+    description: "任务已被Worker接收",
+  },
+};
+
+// 获取状态信息
+function getStatusInfo(status: string): StatusInfo {
+  const info = STATUS_INFO_MAP[status];
+  if (info) return info;
+  
+  // 未知状态的默认显示
+  return {
+    icon: "❔",
+    label: status,
+    color: "text-gray-600",
+    bgColor: "bg-gray-50",
+    category: "waiting",
+    description: "未知状态",
+  };
+}
+
+// 获取状态徽章的CSS类（向后兼容）
 function statusBadgeClass(status: string): string {
-  switch (status) {
-    case "SUCCESS":
-      return "bg-green-100 text-green-700";
-    case "STARTED":
-    case "RETRY":
-    case "RECEIVED":
-      return "bg-yellow-100 text-yellow-700";
-    case "FAILURE":
-    case "FAILED":
-    case "REVOKED":
-      return "bg-red-100 text-red-700";
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
+  const info = getStatusInfo(status);
+  return `${info.bgColor} ${info.color}`;
 }
 
 export default function TasksTable() {
@@ -637,6 +794,7 @@ export default function TasksTable() {
           : null;
       const durationSeconds = normalizedElapsed ?? normalizedDuration;
       const durationText = durationSeconds != null ? formatDuration(durationSeconds) : "-";
+      const statusInfo = getStatusInfo(task.status);
       const badgeClass = statusBadgeClass(task.status);
 
       return (
@@ -648,10 +806,16 @@ export default function TasksTable() {
             <div className="break-all leading-5">{task.task_id}</div>
           </td>
           <td className="px-3 py-2 text-center align-top">
-            <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
-              {task.status}
+            <span 
+              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}
+              title={statusInfo.description}
+            >
+              <span className="text-sm">{statusInfo.icon}</span>
+              <span>{statusInfo.label}</span>
             </span>
-            <div className="mt-2 text-xs text-gray-500">{statusTime}</div>
+            <div className="mt-2 text-xs text-gray-500" title={`状态更新时间: ${statusTime}`}>
+              {statusTime}
+            </div>
           </td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{durationText}</td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{submittedAt}</td>
@@ -736,9 +900,9 @@ export default function TasksTable() {
               }}
               className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              {STATUS_FILTER_OPTIONS.map((value) => (
-                <option key={value || "all"} value={value}>
-                  {value === "" ? "全部状态" : value}
+              {STATUS_FILTER_OPTIONS.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
