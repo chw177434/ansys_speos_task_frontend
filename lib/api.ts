@@ -1,6 +1,10 @@
-export const DEFAULT_API_BASE = "http://14.103.81.67:8089";
-// export const DEFAULT_API_BASE = "http://localhost:8000";
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || DEFAULT_API_BASE;
+// 默认后端地址，可通过环境变量 NEXT_PUBLIC_API_BASE 覆盖
+// 使用 Next.js rewrites 代理：通过 /api 路径访问后端，避免跨域和防火墙问题
+// 如果设置了 NEXT_PUBLIC_API_BASE，则直接使用该地址（不通过代理）
+export const DEFAULT_API_BASE = "/api";
+export const API_BASE = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE) 
+  ? process.env.NEXT_PUBLIC_API_BASE 
+  : DEFAULT_API_BASE;
 
 type FetchOptions = RequestInit & { parseJson?: boolean };
 
