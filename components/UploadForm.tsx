@@ -313,6 +313,13 @@ export default function UploadForm() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    
+    // 防止重复提交：如果已经在提交中，直接返回
+    if (submitting) {
+      console.warn("任务正在提交中，请勿重复提交");
+      return;
+    }
+    
     setFormError(null);
     setSubmitInfo(null);
     setUploadStep("");
@@ -524,8 +531,11 @@ export default function UploadForm() {
     masterFile: File,
     includeZip: Blob | null
   ) => {
-    // 步骤 1: 初始化上传（获取预签名 URL）
+    // 步骤 1: 一次性初始化所有文件的上传（获取预签名 URL）
+    // 这样可以防止创建多个任务
     setUploadStep("📝 初始化上传...");
+    
+    // 先初始化 master 文件
     const initData = await initUpload({
       filename: masterFile.name,
       file_size: masterFile.size,
@@ -540,6 +550,29 @@ export default function UploadForm() {
 
     if (!masterUploadInfo) {
       throw new Error("未获取到 master 文件上传 URL");
+    }
+
+    // 如果有 include 文件，使用同一个 task_id 获取 include 的上传 URL
+    let includeUploadInfo: { object_key: string; upload_url: string } | undefined;
+    if (includeZip) {
+      // 注意：这里使用相同的 job_name 和 task_id 概念
+      // 后端应该识别这是同一个任务的 include 文件
+      const includeInitData = await initUpload({
+        filename: `${includeFolderLabel || "include"}.zip`,
+        file_size: includeZip.size,
+        file_type: "include",
+        content_type: "application/zip",
+        job_name: jobName.trim(),
+        submitter: "用户",
+      });
+
+      // 检查返回的 task_id 是否一致
+      if (includeInitData.task_id !== taskId) {
+        console.warn(`警告：include 文件返回了不同的 task_id: ${includeInitData.task_id}，预期: ${taskId}`);
+        // 这里可能需要清理重复创建的任务
+      }
+
+      includeUploadInfo = includeInitData.include_upload;
     }
 
     // 步骤 2a: 上传 Master 文件到 TOS
@@ -562,34 +595,20 @@ export default function UploadForm() {
 
     // 步骤 2b: 如果有 include 文件，也上传
     let includeObjectKey: string | undefined;
-    if (includeZip) {
+    if (includeZip && includeUploadInfo) {
       setUploadStep("⬆️ 上传 Include 文件...");
-
-      // 初始化 include 上传
-      const includeInitData = await initUpload({
-        filename: `${includeFolderLabel || "include"}.zip`,
-        file_size: includeZip.size,
-        file_type: "include",
-        content_type: "application/zip",
-        job_name: jobName.trim(),
-        submitter: "用户",
-      });
-
-      const includeUploadInfo = includeInitData.include_upload;
-      if (includeUploadInfo) {
-        await uploadToTOS(
-          includeUploadInfo.upload_url,
-          includeZip,
-          (info: UploadProgressInfo) => {
-            setIncludeProgress(info.progress);
-            setUploadSpeed(info.speed);
-            setEstimatedTime(info.estimatedTime);
-            setUploadProgress(60 + Math.round(info.progress * 0.3)); // include 占 30%
-          },
-          abortControllerRef.current?.signal
-        );
-        includeObjectKey = includeUploadInfo.object_key;
-      }
+      await uploadToTOS(
+        includeUploadInfo.upload_url,
+        includeZip,
+        (info: UploadProgressInfo) => {
+          setIncludeProgress(info.progress);
+          setUploadSpeed(info.speed);
+          setEstimatedTime(info.estimatedTime);
+          setUploadProgress(60 + Math.round(info.progress * 0.3)); // include 占 30%
+        },
+        abortControllerRef.current?.signal
+      );
+      includeObjectKey = includeUploadInfo.object_key;
     }
 
     // 步骤 3: 确认上传完成

@@ -177,7 +177,35 @@ function sliceRows(rows: TableTask[], page: number, size: number): TableTask[] {
 }
 
 function createRows(items: RawTask[]): TableTask[] {
-  return items.map((item) => {
+  // 使用 Map 来去重，保留最新的任务（基于 created_at 时间戳）
+  const taskMap = new Map<string, RawTask>();
+  let duplicateCount = 0;
+  
+  items.forEach((item) => {
+    const existing = taskMap.get(item.task_id);
+    if (!existing) {
+      taskMap.set(item.task_id, item);
+    } else {
+      // 检测到重复任务
+      duplicateCount++;
+      console.warn(`检测到重复任务 ID: ${item.task_id}，将保留最新的版本`);
+      
+      // 如果已存在，保留时间戳更新的那个（或者如果没有时间戳就保留第一个）
+      const existingTime = existing.created_at ?? 0;
+      const newTime = item.created_at ?? 0;
+      if (newTime > existingTime) {
+        taskMap.set(item.task_id, item);
+      }
+    }
+  });
+  
+  // 如果检测到重复，记录统计信息
+  if (duplicateCount > 0) {
+    console.warn(`总共检测到 ${duplicateCount} 个重复任务，已自动去重。原始任务数：${items.length}，去重后：${taskMap.size}`);
+  }
+  
+  // 将去重后的任务转换为 TableTask
+  return Array.from(taskMap.values()).map((item) => {
     const initialOutputs = outputsFromDownload(item.task_id, item.download_url, item.download_name);
     const shouldFetchOutputs = item.status === "SUCCESS";
     return {
