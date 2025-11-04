@@ -501,14 +501,16 @@ export default function UploadForm() {
     const result: CreateTaskResponse = await createTask(formData);
     
     // 更新历史记录为成功
-    if (currentUploadIdRef.current) {
+    const uploadId = currentUploadIdRef.current;
+    if (uploadId) {
       setUploadHistory((prev) =>
         prev.map((item) =>
-          item.id === currentUploadIdRef.current
+          item.id === uploadId
             ? { ...item, status: "success" as const, progress: 100, taskId: result.task_id }
             : item
         )
       );
+      console.log(`✅ 上传历史已更新为成功，任务ID: ${result.task_id}, 上传ID: ${uploadId}`);
     }
     
     setSubmitInfo({
@@ -516,6 +518,12 @@ export default function UploadForm() {
       status: result.status,
       message: result.message ?? null,
     });
+    
+    // 3秒后自动隐藏成功提示，让用户关注任务列表中的实时状态
+    setTimeout(() => {
+      setSubmitInfo(null);
+    }, 3000);
+    
     resetForm();
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -638,15 +646,17 @@ export default function UploadForm() {
     setUploadProgress(100);
     setUploadStep("🎉 完成！");
 
-    // 更新历史记录为成功
-    if (currentUploadIdRef.current) {
+    // 更新历史记录为成功（使用局部变量保存引用，避免竞态条件）
+    const uploadId = currentUploadIdRef.current;
+    if (uploadId) {
       setUploadHistory((prev) =>
         prev.map((item) =>
-          item.id === currentUploadIdRef.current
+          item.id === uploadId
             ? { ...item, status: "success" as const, progress: 100, taskId: confirmData.task_id }
             : item
         )
       );
+      console.log(`✅ 上传历史已更新为成功，任务ID: ${confirmData.task_id}, 上传ID: ${uploadId}`);
     }
 
     setSubmitInfo({
@@ -654,6 +664,11 @@ export default function UploadForm() {
       status: confirmData.status,
       message: confirmData.message ?? null,
     });
+
+    // 3秒后自动隐藏成功提示，让用户关注任务列表中的实时状态
+    setTimeout(() => {
+      setSubmitInfo(null);
+    }, 3000);
 
     resetForm();
 
@@ -1022,12 +1037,13 @@ export default function UploadForm() {
         {submitInfo && !formError && (
           <div className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
             <p>
-              任务提交成功，任务 ID：
-              <span className="font-mono">{submitInfo.taskId}</span>
-              {submitInfo.status && <span className="ml-2">当前状态：{submitInfo.status}</span>}
+              ✅ 任务提交成功！任务 ID：
+              <span className="font-mono font-semibold">{submitInfo.taskId}</span>
             </p>
             {submitInfo.message && <p className="mt-1 text-xs text-green-600">{submitInfo.message}</p>}
-            <p className="mt-1 text-xs text-green-600">可在右侧任务列表中查看进度并下载结果。</p>
+            <p className="mt-1 text-xs text-green-600">
+              📋 请在下方任务列表中查看实时状态和下载结果
+            </p>
           </div>
         )}
 
