@@ -261,3 +261,214 @@ export function formatTime(seconds: number): string {
   return `${hours} 小时 ${mins} 分`;
 }
 
+// ============= 断点续传相关接口 =============
+
+// 分片大小：5MB
+export const CHUNK_SIZE = 5 * 1024 * 1024;
+
+export interface MultipartPart {
+  part_number: number;
+  upload_url: string;
+  start_byte: number;
+  end_byte: number;
+  size: number;
+}
+
+export interface InitMultipartUploadRequest {
+  filename: string;
+  file_size: number;
+  file_type: "master" | "include";
+  content_type: string;
+  chunk_size?: number;
+}
+
+export interface InitMultipartUploadResponse {
+  task_id: string;
+  upload_id: string;
+  object_key: string;
+  total_chunks: number;
+  parts: MultipartPart[];
+}
+
+export interface PartETag {
+  part_number: number;
+  etag: string;
+}
+
+export interface CompleteMultipartUploadRequest {
+  task_id: string;
+  upload_id: string;
+  object_key: string;
+  file_type: "master" | "include";
+  parts: PartETag[];
+}
+
+export interface CompleteMultipartUploadResponse {
+  object_key: string;
+  message: string;
+}
+
+export interface ListUploadedPartsRequest {
+  task_id: string;
+  upload_id: string;
+  object_key: string;
+}
+
+export interface ListUploadedPartsResponse {
+  parts: PartETag[];
+}
+
+export interface AbortMultipartUploadRequest {
+  task_id: string;
+  upload_id: string;
+  object_key: string;
+}
+
+// 1. 初始化分片上传
+export async function initMultipartUpload(data: InitMultipartUploadRequest) {
+  return request<InitMultipartUploadResponse>("/tasks/upload/multipart/init", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// 2. 上传单个分片到 TOS
+export async function uploadPart(
+  uploadUrl: string,
+  chunk: Blob,
+  onProgress?: (loaded: number, total: number) => void,
+  abortSignal?: AbortSignal
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        reject(new Error("上传已取消"));
+        return;
+      }
+      
+      abortSignal.addEventListener("abort", () => {
+        xhr.abort();
+        reject(new Error("上传已取消"));
+      });
+    }
+
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(e.loaded, e.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        // 获取 ETag 并移除引号
+        const etag = xhr.getResponseHeader("ETag");
+        if (!etag) {
+          reject(new Error("未获取到 ETag"));
+          return;
+        }
+        // 移除 ETag 中的引号
+        const cleanETag = etag.replace(/^"(.*)"$/, "$1");
+        resolve(cleanETag);
+      } else {
+        reject(new Error(`分片上传失败: ${xhr.status} ${xhr.statusText}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("网络错误，分片上传失败"));
+    xhr.ontimeout = () => reject(new Error("分片上传超时"));
+    xhr.onabort = () => reject(new Error("分片上传已取消"));
+
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.timeout = 5 * 60 * 1000; // 5分钟超时
+
+    xhr.send(chunk);
+  });
+}
+
+// 3. 完成分片上传
+export async function completeMultipartUpload(data: CompleteMultipartUploadRequest) {
+  return request<CompleteMultipartUploadResponse>("/tasks/upload/multipart/complete", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// 4. 查询已上传的分片（断点续传）
+export async function listUploadedParts(data: ListUploadedPartsRequest) {
+  return request<ListUploadedPartsResponse>("/tasks/upload/multipart/list", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// 5. 取消分片上传
+export async function abortMultipartUpload(data: AbortMultipartUploadRequest) {
+  return request<void>("/tasks/upload/multipart/abort", {
+    method: "POST",
+    body: JSON.stringify(data),
+    parseJson: false,
+  });
+}
+
+// ============= 断点续传进度管理 =============
+
+export interface ResumableUploadProgress {
+  task_id: string;
+  upload_id: string;
+  object_key: string;
+  file_type: "master" | "include";
+  filename: string;
+  file_size: number;
+  total_chunks: number;
+  uploaded_parts: PartETag[];
+  timestamp: number;
+}
+
+// 保存上传进度到 localStorage
+export function saveUploadProgress(progress: ResumableUploadProgress): void {
+  if (typeof window === "undefined") return;
+  
+  try {
+    const key = `resumable_upload_${progress.task_id}_${progress.file_type}`;
+    localStorage.setItem(key, JSON.stringify(progress));
+    console.log(`✅ 保存上传进度: ${progress.filename}, 已上传 ${progress.uploaded_parts.length}/${progress.total_chunks} 片`);
+  } catch (error) {
+    console.warn("保存上传进度失败", error);
+  }
+}
+
+// 从 localStorage 加载上传进度
+export function loadUploadProgress(task_id: string, file_type: "master" | "include"): ResumableUploadProgress | null {
+  if (typeof window === "undefined") return null;
+  
+  try {
+    const key = `resumable_upload_${task_id}_${file_type}`;
+    const data = localStorage.getItem(key);
+    if (!data) return null;
+    
+    const progress = JSON.parse(data) as ResumableUploadProgress;
+    console.log(`📥 加载上传进度: ${progress.filename}, 已上传 ${progress.uploaded_parts.length}/${progress.total_chunks} 片`);
+    return progress;
+  } catch (error) {
+    console.warn("加载上传进度失败", error);
+    return null;
+  }
+}
+
+// 清除上传进度
+export function clearUploadProgress(task_id: string, file_type: "master" | "include"): void {
+  if (typeof window === "undefined") return;
+  
+  try {
+    const key = `resumable_upload_${task_id}_${file_type}`;
+    localStorage.removeItem(key);
+    console.log(`🗑️ 清除上传进度: ${task_id} (${file_type})`);
+  } catch (error) {
+    console.warn("清除上传进度失败", error);
+  }
+}

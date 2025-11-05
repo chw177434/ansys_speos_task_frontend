@@ -19,6 +19,10 @@ import {
   type CreateTaskResponse,
   type UploadProgressInfo,
 } from "../lib/api";
+import {
+  uploadFileWithResumable,
+  type UploadProgressInfo as ResumableProgressInfo,
+} from "../lib/resumableUpload";
 import JSZip from "jszip";
 
 const FORM_STATE_KEY = "speos_task_form_state";
@@ -146,6 +150,12 @@ export default function UploadForm() {
   const [includeProgress, setIncludeProgress] = useState<number>(0);
   const [uploadSpeed, setUploadSpeed] = useState<number>(0);
   const [estimatedTime, setEstimatedTime] = useState<number>(0);
+  
+  // 断点续传相关状态
+  const [isResumableUpload, setIsResumableUpload] = useState<boolean>(false);
+  const [totalChunks, setTotalChunks] = useState<number>(0);
+  const [uploadedChunks, setUploadedChunks] = useState<number>(0);
+  const [currentChunk, setCurrentChunk] = useState<number>(0);
   
   // 取消上传控制器
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -364,20 +374,28 @@ export default function UploadForm() {
       includeZip = await zip.generateAsync({ type: "blob" });
     }
 
-    // 文件大小阈值：50MB
-    const FILE_SIZE_THRESHOLD = 50 * 1024 * 1024;
+    // 文件大小阈值
+    const SIMPLE_UPLOAD_THRESHOLD = 50 * 1024 * 1024; // 50MB - 简单上传（旧流程）
+    const RESUMABLE_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB - 断点续传
+    
     const masterFileSize = masterFile.size;
     const includeFileSize = includeZip?.size || 0;
     const totalSize = masterFileSize + includeFileSize;
 
-    // 判断是否使用新流程
-    const useNewFlow = totalSize >= FILE_SIZE_THRESHOLD;
+    // 判断使用哪种上传方式
+    let uploadMode: "simple" | "tos" | "resumable" = "simple";
+    
+    if (totalSize >= RESUMABLE_UPLOAD_THRESHOLD && totalSize < SIMPLE_UPLOAD_THRESHOLD) {
+      uploadMode = "resumable"; // 10MB-50MB：使用断点续传
+    } else if (totalSize >= SIMPLE_UPLOAD_THRESHOLD) {
+      uploadMode = "resumable"; // >50MB：也使用断点续传（更可靠）
+    }
 
     // 大文件警告（100MB 以上）
     if (totalSize > 100 * 1024 * 1024) {
       const sizeInMB = Math.round(totalSize / 1024 / 1024);
       const confirmed = window.confirm(
-        `文件较大（${sizeInMB} MB），上传可能需要较长时间，是否继续？`
+        `文件较大（${sizeInMB} MB），将使用断点续传上传，支持暂停恢复。是否继续？`
       );
       if (!confirmed) {
         return;
@@ -387,8 +405,11 @@ export default function UploadForm() {
     setSubmitting(true);
 
     try {
-      if (useNewFlow) {
-        // ========== 新流程：TOS 三步上传 ==========
+      if (uploadMode === "resumable") {
+        // ========== 新流程：断点续传 ==========
+        await handleResumableUpload(masterFile, includeZip);
+      } else if (uploadMode === "tos") {
+        // ========== TOS 流程：单次上传 ==========
         await handleNewFlowUpload(masterFile, includeZip);
       } else {
         // ========== 旧流程：直接上传 ==========
@@ -678,6 +699,149 @@ export default function UploadForm() {
           detail: { taskId: confirmData.task_id },
         })
       );
+    }
+  };
+
+  // 断点续传流程
+  const handleResumableUpload = async (
+    masterFile: File,
+    includeZip: Blob | null
+  ) => {
+    setIsResumableUpload(true);
+    setUploadStep("📦 使用断点续传模式");
+
+    let masterTaskId: string | null = null;
+    let masterObjectKey: string | null = null;
+    let includeObjectKey: string | null = null;
+
+    try {
+      // 步骤 1: 上传 Master 文件（分片）
+      setUploadStep("⬆️ 上传 Master 文件（分片模式）");
+      
+      const masterResult = await uploadFileWithResumable(
+        masterFile,
+        masterFile.name,
+        "master",
+        {
+          onProgress: (info: ResumableProgressInfo) => {
+            setTotalChunks(info.totalChunks);
+            setUploadedChunks(info.uploadedChunks);
+            setCurrentChunk(info.currentChunk);
+            setUploadProgress(info.progress);
+            setUploadSpeed(info.speed);
+            setEstimatedTime(info.estimatedTime);
+            setMasterProgress(info.progress);
+          },
+          onChunkComplete: (chunkIndex: number, totalChunks: number) => {
+            console.log(`✅ Master 分片 ${chunkIndex}/${totalChunks} 上传完成`);
+          },
+          abortSignal: abortControllerRef.current?.signal,
+        }
+      );
+
+      masterTaskId = masterResult.taskId;
+      masterObjectKey = masterResult.objectKey;
+      console.log(`✅ Master 文件上传完成: ${masterResult.objectKey}`);
+
+      // 步骤 2: 如果有 include 文件，也使用分片上传
+      if (includeZip) {
+        setUploadStep("⬆️ 上传 Include 文件（分片模式）");
+        
+        const includeResult = await uploadFileWithResumable(
+          includeZip,
+          `${includeFolderLabel || "include"}.zip`,
+          "include",
+          {
+            onProgress: (info: ResumableProgressInfo) => {
+              setTotalChunks(info.totalChunks);
+              setUploadedChunks(info.uploadedChunks);
+              setCurrentChunk(info.currentChunk);
+              // 综合进度：master 50% + include 50%
+              const combinedProgress = 50 + (info.progress * 0.5);
+              setUploadProgress(Math.round(combinedProgress));
+              setUploadSpeed(info.speed);
+              setEstimatedTime(info.estimatedTime);
+              setIncludeProgress(info.progress);
+            },
+            onChunkComplete: (chunkIndex: number, totalChunks: number) => {
+              console.log(`✅ Include 分片 ${chunkIndex}/${totalChunks} 上传完成`);
+            },
+            abortSignal: abortControllerRef.current?.signal,
+          }
+        );
+
+        includeObjectKey = includeResult.objectKey;
+        console.log(`✅ Include 文件上传完成: ${includeResult.objectKey}`);
+      }
+
+      // 步骤 3: 提交任务（使用 confirmUpload）
+      setUploadStep("✅ 提交任务...");
+      setUploadProgress(95);
+
+      const confirmData = await confirmUpload({
+        task_id: masterTaskId,
+        master_object_key: masterObjectKey,
+        include_object_key: includeObjectKey || undefined,
+        job_name: jobName.trim(),
+        submitter: "用户",
+        profile_name: profileName.trim(),
+        version: version.trim(),
+        project_dir: projectDir.trim() || undefined,
+        use_gpu: useGpu || undefined,
+        simulation_index: simulationIndex.trim() || undefined,
+        thread_count: threadCount.trim() || undefined,
+        priority: priority.trim() || undefined,
+        ray_count: rayCount.trim() || undefined,
+        duration_minutes: durationMinutes.trim() || undefined,
+        hpc_job_name: hpcJobName.trim() || undefined,
+        node_count: nodeCount.trim() || undefined,
+        walltime_hours: walltimeHours.trim() || undefined,
+      });
+
+      setUploadProgress(100);
+      setUploadStep("🎉 完成！");
+
+      // 更新历史记录为成功
+      const uploadId = currentUploadIdRef.current;
+      if (uploadId) {
+        setUploadHistory((prev) =>
+          prev.map((item) =>
+            item.id === uploadId
+              ? { ...item, status: "success" as const, progress: 100, taskId: confirmData.task_id }
+              : item
+          )
+        );
+        console.log(`✅ 上传历史已更新为成功，任务ID: ${confirmData.task_id}, 上传ID: ${uploadId}`);
+      }
+
+      setSubmitInfo({
+        taskId: confirmData.task_id,
+        status: confirmData.status,
+        message: confirmData.message ?? null,
+      });
+
+      // 3秒后自动隐藏成功提示
+      setTimeout(() => {
+        setSubmitInfo(null);
+      }, 3000);
+
+      resetForm();
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("speos-task-created", {
+            detail: { taskId: confirmData.task_id },
+          })
+        );
+      }
+    } catch (error) {
+      console.error("断点续传上传失败", error);
+      throw error;
+    } finally {
+      setIsResumableUpload(false);
+      setTotalChunks(0);
+      setUploadedChunks(0);
+      setCurrentChunk(0);
     }
   };
 
@@ -1004,13 +1168,31 @@ export default function UploadForm() {
 
             {/* 详细进度 */}
             <div className="space-y-1">
-              {masterProgress > 0 && masterProgress < 100 && (
+              {/* 断点续传模式：显示分片信息 */}
+              {isResumableUpload && totalChunks > 0 && (
+                <div className="text-xs text-blue-700 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span>📦 分片上传模式</span>
+                    <span className="font-mono">
+                      {uploadedChunks}/{totalChunks} 片
+                    </span>
+                  </div>
+                  {currentChunk > 0 && currentChunk <= totalChunks && (
+                    <div className="text-xs text-blue-600">
+                      当前分片: #{currentChunk}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 普通模式：显示文件进度 */}
+              {!isResumableUpload && masterProgress > 0 && masterProgress < 100 && (
                 <div className="text-xs text-blue-700">
                   Master 文件: {masterProgress}%
                 </div>
               )}
 
-              {includeProgress > 0 && includeProgress < 100 && (
+              {!isResumableUpload && includeProgress > 0 && includeProgress < 100 && (
                 <div className="text-xs text-blue-700">
                   Include 文件: {includeProgress}%
                 </div>
