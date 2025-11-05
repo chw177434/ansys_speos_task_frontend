@@ -176,6 +176,15 @@ export default function UploadForm() {
   const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
   const currentUploadIdRef = useRef<string | null>(null);
 
+  // 检测未完成的上传（断点续传提示）
+  const [pendingUploads, setPendingUploads] = useState<Array<{
+    taskId: string;
+    filename: string;
+    uploadedChunks: number;
+    totalChunks: number;
+    fileType: string;
+  }>>([]);
+
   const masterInputRef = useRef<HTMLInputElement | null>(null);
   const includeDirectoryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -280,6 +289,44 @@ export default function UploadForm() {
 
   const includeFilesCount = filteredIncludeFiles.length;
   const masterFileLabel = masterFile?.name ?? "";
+
+  // 检查 localStorage 中的未完成上传
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkPendingUploads = () => {
+      const pending: Array<{
+        taskId: string;
+        filename: string;
+        uploadedChunks: number;
+        totalChunks: number;
+        fileType: string;
+      }> = [];
+
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("resumable_upload_")) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || "{}");
+            if (data.uploaded_parts && data.uploaded_parts.length < data.total_chunks) {
+              pending.push({
+                taskId: data.task_id,
+                filename: data.filename,
+                uploadedChunks: data.uploaded_parts.length,
+                totalChunks: data.total_chunks,
+                fileType: data.file_type,
+              });
+            }
+          } catch (error) {
+            console.warn("解析上传进度失败", error);
+          }
+        }
+      });
+
+      setPendingUploads(pending);
+    };
+
+    checkPendingUploads();
+  }, []);
 
   // 同步当前上传进度到历史记录
   useEffect(() => {
@@ -715,6 +762,31 @@ export default function UploadForm() {
     let includeObjectKey: string | null = null;
 
     try {
+      // 步骤 0: 检查是否有未完成的上传（智能匹配）
+      let existingMasterTaskId: string | undefined;
+      let existingMasterUploadId: string | undefined;
+      let existingMasterObjectKey: string | undefined;
+      
+      // 尝试通过文件名和大小匹配未完成的上传
+      if (typeof window !== "undefined") {
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("resumable_upload_") && key.endsWith("_master")) {
+            try {
+              const data = JSON.parse(localStorage.getItem(key) || "{}");
+              // 匹配条件：文件名和大小相同
+              if (data.filename === masterFile.name && data.file_size === masterFile.size) {
+                existingMasterTaskId = data.task_id;
+                existingMasterUploadId = data.upload_id;
+                existingMasterObjectKey = data.object_key;
+                console.log(`🔍 发现匹配的未完成上传: ${data.filename}, taskId=${existingMasterTaskId}`);
+              }
+            } catch (error) {
+              console.warn("解析上传进度失败", error);
+            }
+          }
+        });
+      }
+
       // 步骤 1: 上传 Master 文件（分片）
       setUploadStep("⬆️ 上传 Master 文件（分片模式）");
       
@@ -723,6 +795,9 @@ export default function UploadForm() {
         masterFile.name,
         "master",
         {
+          existingTaskId: existingMasterTaskId,
+          existingUploadId: existingMasterUploadId,
+          existingObjectKey: existingMasterObjectKey,
           onProgress: (info: ResumableProgressInfo) => {
             setTotalChunks(info.totalChunks);
             setUploadedChunks(info.uploadedChunks);
@@ -747,11 +822,38 @@ export default function UploadForm() {
       if (includeZip) {
         setUploadStep("⬆️ 上传 Include 文件（分片模式）");
         
+        // 检查 include 文件的未完成上传
+        let existingIncludeTaskId: string | undefined;
+        let existingIncludeUploadId: string | undefined;
+        let existingIncludeObjectKey: string | undefined;
+        
+        const includeFilename = `${includeFolderLabel || "include"}.zip`;
+        if (typeof window !== "undefined") {
+          Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith("resumable_upload_") && key.endsWith("_include")) {
+              try {
+                const data = JSON.parse(localStorage.getItem(key) || "{}");
+                if (data.filename === includeFilename && data.file_size === includeZip.size) {
+                  existingIncludeTaskId = data.task_id;
+                  existingIncludeUploadId = data.upload_id;
+                  existingIncludeObjectKey = data.object_key;
+                  console.log(`🔍 发现匹配的未完成上传: ${data.filename}, taskId=${existingIncludeTaskId}`);
+                }
+              } catch (error) {
+                console.warn("解析上传进度失败", error);
+              }
+            }
+          });
+        }
+        
         const includeResult = await uploadFileWithResumable(
           includeZip,
-          `${includeFolderLabel || "include"}.zip`,
+          includeFilename,
           "include",
           {
+            existingTaskId: existingIncludeTaskId,
+            existingUploadId: existingIncludeUploadId,
+            existingObjectKey: existingIncludeObjectKey,
             onProgress: (info: ResumableProgressInfo) => {
               setTotalChunks(info.totalChunks);
               setUploadedChunks(info.uploadedChunks);
@@ -880,6 +982,60 @@ export default function UploadForm() {
           填写任务信息并上传 Master File（必选）与 Include 文件夹（可选），提交后任务会自动出现在右侧列表中。
         </p>
       </header>
+
+      {/* 未完成上传提示（断点续传） */}
+      {pendingUploads.length > 0 && (
+        <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">💾</span>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-blue-900">
+                检测到未完成的上传（断点续传可用）
+              </h3>
+              <p className="mt-1 text-xs text-blue-700">
+                您有 {pendingUploads.length} 个文件没有上传完成。
+                选择相同的文件并填写相同的 Job Name，系统会自动从断点继续上传。
+              </p>
+              <div className="mt-3 space-y-2">
+                {pendingUploads.map((upload) => (
+                  <div
+                    key={upload.taskId}
+                    className="flex items-center justify-between rounded bg-white px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-blue-900">
+                        📄 {upload.filename}
+                      </span>
+                      <span className="text-blue-600">
+                        ({upload.fileType})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-blue-700">
+                        已上传 {upload.uploadedChunks}/{upload.totalChunks} 片
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            const key = `resumable_upload_${upload.taskId}_${upload.fileType}`;
+                            localStorage.removeItem(key);
+                            setPendingUploads((prev) =>
+                              prev.filter((u) => u.taskId !== upload.taskId)
+                            );
+                          }
+                        }}
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        清除
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 上传历史记录 */}
       {uploadHistory.length > 0 && (
