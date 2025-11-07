@@ -23,7 +23,6 @@ import {
   uploadFileWithResumable,
   type UploadProgressInfo as ResumableProgressInfo,
 } from "../lib/resumableUpload";
-import JSZip from "jszip";
 
 const FORM_STATE_KEY = "speos_task_form_state";
 
@@ -134,7 +133,7 @@ export default function UploadForm() {
   });
 
   const [masterFile, setMasterFile] = useState<File | null>(null);
-  const [includeFiles, setIncludeFiles] = useState<FileList | null>(null);
+  const [includeFile, setIncludeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitInfo, setSubmitInfo] = useState<{
@@ -186,13 +185,30 @@ export default function UploadForm() {
   }>>([]);
 
   const masterInputRef = useRef<HTMLInputElement | null>(null);
-  const includeDirectoryInputRef = useRef<HTMLInputElement | null>(null);
+  const includeInputRef = useRef<HTMLInputElement | null>(null);
 
-  const includeDirectoryRef = useCallback((node: HTMLInputElement | null) => {
-    includeDirectoryInputRef.current = node;
-    if (!node) return;
-    node.setAttribute("webkitdirectory", "true");
-    node.setAttribute("directory", "true");
+  // 验证Include文件是否为压缩包格式
+  const validateIncludeFile = useCallback((file: File): boolean => {
+    const allowedExtensions = ['.zip', '.rar', '.7z', '.tar', '.gz', '.tar.gz'];
+    const fileName = file.name.toLowerCase();
+    
+    const isValidArchive = allowedExtensions.some(ext => 
+      fileName.endsWith(ext)
+    );
+    
+    if (!isValidArchive) {
+      alert(
+        `Include文件必须是压缩包格式！\n\n` +
+        `支持的格式：${allowedExtensions.join(', ')}\n\n` +
+        `请先将include文件夹压缩为.zip文件后再上传。\n\n` +
+        `压缩方法：\n` +
+        `• Windows：右键文件夹 → "发送到" → "压缩(zipped)文件夹"\n` +
+        `• Mac：右键文件夹 → "压缩"`
+      );
+      return false;
+    }
+    
+    return true;
   }, []);
 
   const resetForm = useCallback(() => {
@@ -210,13 +226,13 @@ export default function UploadForm() {
     setNodeCount(DEFAULT_FORM_STATE.nodeCount ?? "1");
     setWalltimeHours(DEFAULT_FORM_STATE.walltimeHours ?? "");
     setMasterFile(null);
-    setIncludeFiles(null);
+    setIncludeFile(null);
     setShowAdvanced(false);
     if (masterInputRef.current) {
       masterInputRef.current.value = "";
     }
-    if (includeDirectoryInputRef.current) {
-      includeDirectoryInputRef.current.value = "";
+    if (includeInputRef.current) {
+      includeInputRef.current.value = "";
     }
     saveFormState({ ...DEFAULT_FORM_STATE });
   }, []);
@@ -253,42 +269,8 @@ export default function UploadForm() {
     walltimeHours,
   ]);
 
-  const includeFilesArray = useMemo(() => {
-    if (!includeFiles || includeFiles.length === 0) return [] as (File & { webkitRelativePath?: string })[];
-    return Array.from(includeFiles) as (File & { webkitRelativePath?: string })[];
-  }, [includeFiles]);
-
-  const filteredIncludeFiles = useMemo(() => {
-    if (!masterFile) return includeFilesArray;
-    return includeFilesArray.filter((file) => {
-      const sameName = file.name === masterFile.name;
-      const sameSize = file.size === masterFile.size;
-      const sameModified = file.lastModified === masterFile.lastModified;
-      if (sameName && sameSize && sameModified) {
-        return false;
-      }
-      const relativePath = file.webkitRelativePath ?? "";
-      if (relativePath) {
-        const tail = relativePath.split(/[\\/]/).pop();
-        if (tail && tail === masterFile.name && sameSize) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [includeFilesArray, masterFile]);
-
-  const includeFolderLabel = useMemo(() => {
-    if (filteredIncludeFiles.length === 0) return "";
-    const first = filteredIncludeFiles[0];
-    const relativePath = first?.webkitRelativePath ?? "";
-    if (!relativePath) return "";
-    const topLevel = relativePath.split(/[\\/]/)[0];
-    return topLevel || relativePath;
-  }, [filteredIncludeFiles]);
-
-  const includeFilesCount = filteredIncludeFiles.length;
   const masterFileLabel = masterFile?.name ?? "";
+  const includeFileLabel = includeFile?.name ?? "";
 
   // 检查 localStorage 中的未完成上传
   useEffect(() => {
@@ -410,15 +392,16 @@ export default function UploadForm() {
     // 创建新的 AbortController
     abortControllerRef.current = new AbortController();
 
-    // 准备 include 文件（如果有）
-    let includeZip: Blob | null = null;
-    if (filteredIncludeFiles.length > 0) {
-      const zip = new JSZip();
-      filteredIncludeFiles.forEach((file) => {
-        const relPath = file.webkitRelativePath || file.name;
-        zip.file(relPath, file);
-      });
-      includeZip = await zip.generateAsync({ type: "blob" });
+    // 准备 include 文件（如果有）- 现在直接使用用户上传的压缩包
+    let includeArchive: File | null = null;
+    if (includeFile) {
+      // 验证文件格式
+      if (!validateIncludeFile(includeFile)) {
+        setSubmitting(false);
+        currentUploadIdRef.current = null;
+        return;
+      }
+      includeArchive = includeFile;
     }
 
     // 文件大小阈值
@@ -426,16 +409,14 @@ export default function UploadForm() {
     const RESUMABLE_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB - 断点续传
     
     const masterFileSize = masterFile.size;
-    const includeFileSize = includeZip?.size || 0;
+    const includeFileSize = includeArchive?.size || 0;
     const totalSize = masterFileSize + includeFileSize;
 
     // 判断使用哪种上传方式
-    let uploadMode: "simple" | "tos" | "resumable" = "simple";
+    let uploadMode: "simple" | "resumable" = "simple";
     
-    if (totalSize >= RESUMABLE_UPLOAD_THRESHOLD && totalSize < SIMPLE_UPLOAD_THRESHOLD) {
-      uploadMode = "resumable"; // 10MB-50MB：使用断点续传
-    } else if (totalSize >= SIMPLE_UPLOAD_THRESHOLD) {
-      uploadMode = "resumable"; // >50MB：也使用断点续传（更可靠）
+    if (totalSize >= RESUMABLE_UPLOAD_THRESHOLD) {
+      uploadMode = "resumable"; // >=10MB：使用断点续传
     }
 
     // 大文件警告（100MB 以上）
@@ -453,17 +434,31 @@ export default function UploadForm() {
 
     try {
       if (uploadMode === "resumable") {
-        // ========== 新流程：断点续传 ==========
-        await handleResumableUpload(masterFile, includeZip);
-      } else if (uploadMode === "tos") {
-        // ========== TOS 流程：单次上传 ==========
-        await handleNewFlowUpload(masterFile, includeZip);
+        // ========== 断点续传流程 ==========
+        await handleResumableUpload(masterFile, includeArchive);
       } else {
-        // ========== 旧流程：直接上传 ==========
-        await handleOldFlowUpload(masterFile, includeZip);
+        // ========== 简单上传流程 ==========
+        await handleOldFlowUpload(masterFile, includeArchive);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "提交任务失败";
+      let message = "提交任务失败";
+      
+      if (error instanceof Error) {
+        message = error.message;
+        
+        // 特殊处理include文件格式错误（400错误）
+        if (message.includes("Include file must be an archive file") || 
+            message.includes("Allowed formats")) {
+          message = 
+            "❌ Include文件格式错误！\n\n" +
+            "Include文件必须是压缩包格式。\n" +
+            "支持的格式：.zip, .rar, .7z, .tar, .gz, .tar.gz\n\n" +
+            "请先将include文件夹压缩为.zip文件后再上传。\n\n" +
+            "压缩方法：\n" +
+            "• Windows：右键文件夹 → \"发送到\" → \"压缩(zipped)文件夹\"\n" +
+            "• Mac：右键文件夹 → \"压缩\"";
+        }
+      }
       
       // 更新历史记录状态
       if (currentUploadIdRef.current) {
@@ -501,7 +496,7 @@ export default function UploadForm() {
   // 旧流程：直接上传
   const handleOldFlowUpload = async (
     masterFile: File,
-    includeZip: Blob | null
+    includeArchive: File | null
   ) => {
     setUploadStep("正在提交任务...");
 
@@ -511,10 +506,8 @@ export default function UploadForm() {
     formData.append("job_name", jobName.trim());
     formData.append("master_file", masterFile, masterFile.name);
 
-    if (includeZip) {
-      const zipName = `${includeFolderLabel || "include"}.zip`;
-      formData.append("include_archive", includeZip, zipName);
-      formData.append("include_path", includeFolderLabel || "include");
+    if (includeArchive) {
+      formData.append("include_archive", includeArchive, includeArchive.name);
     }
 
     const projectDirValue = projectDir.trim();
@@ -605,7 +598,7 @@ export default function UploadForm() {
   // 新流程：TOS 三步上传
   const handleNewFlowUpload = async (
     masterFile: File,
-    includeZip: Blob | null
+    includeArchive: File | null
   ) => {
     // 步骤 1: 一次性初始化所有文件的上传（获取预签名 URL）
     // 这样可以防止创建多个任务
@@ -630,14 +623,14 @@ export default function UploadForm() {
 
     // 如果有 include 文件，使用同一个 task_id 获取 include 的上传 URL
     let includeUploadInfo: { object_key: string; upload_url: string } | undefined;
-    if (includeZip) {
+    if (includeArchive) {
       // 注意：这里使用相同的 job_name 和 task_id 概念
       // 后端应该识别这是同一个任务的 include 文件
       const includeInitData = await initUpload({
-        filename: `${includeFolderLabel || "include"}.zip`,
-        file_size: includeZip.size,
+        filename: includeArchive.name,
+        file_size: includeArchive.size,
         file_type: "include",
-        content_type: "application/zip",
+        content_type: includeArchive.type || "application/zip",
         job_name: jobName.trim(),
         submitter: "用户",
       });
@@ -660,7 +653,7 @@ export default function UploadForm() {
         setMasterProgress(info.progress);
         setUploadSpeed(info.speed);
         setEstimatedTime(info.estimatedTime);
-        if (includeZip) {
+        if (includeArchive) {
           setUploadProgress(Math.round(info.progress * 0.6)); // master 占 60%
         } else {
           setUploadProgress(info.progress);
@@ -671,11 +664,11 @@ export default function UploadForm() {
 
     // 步骤 2b: 如果有 include 文件，也上传
     let includeObjectKey: string | undefined;
-    if (includeZip && includeUploadInfo) {
+    if (includeArchive && includeUploadInfo) {
       setUploadStep("⬆️ 上传 Include 文件...");
       await uploadToTOS(
         includeUploadInfo.upload_url,
-        includeZip,
+        includeArchive,
         (info: UploadProgressInfo) => {
           setIncludeProgress(info.progress);
           setUploadSpeed(info.speed);
@@ -752,7 +745,7 @@ export default function UploadForm() {
   // 断点续传流程
   const handleResumableUpload = async (
     masterFile: File,
-    includeZip: Blob | null
+    includeArchive: File | null
   ) => {
     setIsResumableUpload(true);
     setUploadStep("📦 使用断点续传模式");
@@ -819,7 +812,7 @@ export default function UploadForm() {
       console.log(`✅ Master 文件上传完成: ${masterResult.objectKey}`);
 
       // 步骤 2: 如果有 include 文件，也使用分片上传
-      if (includeZip) {
+      if (includeArchive) {
         setUploadStep("⬆️ 上传 Include 文件（分片模式）");
         
         // 检查 include 文件的未完成上传
@@ -827,13 +820,13 @@ export default function UploadForm() {
         let existingIncludeUploadId: string | undefined;
         let existingIncludeObjectKey: string | undefined;
         
-        const includeFilename = `${includeFolderLabel || "include"}.zip`;
+        const includeFilename = includeArchive.name;
         if (typeof window !== "undefined") {
           Object.keys(localStorage).forEach((key) => {
             if (key.startsWith("resumable_upload_") && key.endsWith("_include")) {
               try {
                 const data = JSON.parse(localStorage.getItem(key) || "{}");
-                if (data.filename === includeFilename && data.file_size === includeZip.size) {
+                if (data.filename === includeFilename && data.file_size === includeArchive.size) {
                   existingIncludeTaskId = data.task_id;
                   existingIncludeUploadId = data.upload_id;
                   existingIncludeObjectKey = data.object_key;
@@ -847,7 +840,7 @@ export default function UploadForm() {
         }
         
         const includeResult = await uploadFileWithResumable(
-          includeZip,
+          includeArchive,
           includeFilename,
           "include",
           {
@@ -979,7 +972,7 @@ export default function UploadForm() {
       <header className="space-y-1">
         <h2 className="text-2xl font-semibold text-slate-900">提交 SPEOS 任务</h2>
         <p className="text-sm text-slate-500">
-          填写任务信息并上传 Master File（必选）与 Include 文件夹（可选），提交后任务会自动出现在右侧列表中。
+          填写任务信息并上传 Master File（必选）与 Include 压缩包（可选），提交后任务会自动出现在右侧列表中。
         </p>
       </header>
 
@@ -1137,30 +1130,40 @@ export default function UploadForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Include Files 文件夹（可选）</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Include 文件（可选）</label>
             <input
-              ref={includeDirectoryRef}
+              ref={includeInputRef}
               type="file"
-              multiple
+              accept=".zip,.rar,.7z,.tar,.gz,.tar.gz"
               onClick={(event) => {
                 (event.target as HTMLInputElement).value = "";
               }}
               onChange={(event) => {
-                const files = event.target.files;
-                setIncludeFiles(files && files.length > 0 ? files : null);
+                const file = event.target.files?.[0] ?? null;
+                if (file && !validateIncludeFile(file)) {
+                  event.target.value = "";
+                  return;
+                }
+                setIncludeFile(file);
               }}
               className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
-            {includeFilesCount > 0 && (
+            {includeFileLabel && (
               <p className="mt-1 text-xs text-gray-500">
-                {includeFolderLabel
-                  ? `已选择文件夹：${includeFolderLabel}（共 ${includeFilesCount} 个文件）`
-                  : `已选择 ${includeFilesCount} 个文件`}
+                已选择：{includeFileLabel}
               </p>
             )}
-            <p className="mt-1 text-xs text-gray-400">
-              建议使用文件夹上传方式，系统会上传其中的全部文件与子目录。
-            </p>
+            <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
+              <p className="text-xs text-amber-800 font-medium">
+                ⚠️ Include文件必须是压缩包格式（推荐.zip）
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                支持格式：.zip, .rar, .7z, .tar, .gz, .tar.gz
+              </p>
+              <p className="mt-1 text-xs text-amber-600">
+                📦 压缩方法：Windows右键文件夹 → "发送到" → "压缩(zipped)文件夹"；Mac右键文件夹 → "压缩"
+              </p>
+            </div>
           </div>
 
           <div>
@@ -1369,7 +1372,9 @@ export default function UploadForm() {
         )}
 
         {formError && (
-          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>
+          <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3">
+            <pre className="text-sm text-red-700 whitespace-pre-wrap font-sans">{formError}</pre>
+          </div>
         )}
 
         {submitInfo && !formError && (
