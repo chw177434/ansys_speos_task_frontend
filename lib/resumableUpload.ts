@@ -452,6 +452,9 @@ export async function uploadFileWithResumable(
   filename: string,
   fileType: "master" | "include",
   options?: {
+    existingTaskId?: string;
+    existingUploadId?: string;
+    existingObjectKey?: string;
     onProgress?: (info: UploadProgressInfo) => void;
     onChunkComplete?: (chunkIndex: number, totalChunks: number) => void;
     abortSignal?: AbortSignal;
@@ -462,6 +465,9 @@ export async function uploadFileWithResumable(
       file,
       filename,
       fileType,
+      existingTaskId: options?.existingTaskId,
+      existingUploadId: options?.existingUploadId,
+      existingObjectKey: options?.existingObjectKey,
       onProgress: options?.onProgress,
       onChunkComplete: options?.onChunkComplete,
       onComplete: resolve,
