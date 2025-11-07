@@ -1,12 +1,16 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   API_BASE,
   deleteTask,
   listOutputs,
   type TaskOutputsResponse,
 } from "../lib/api";
+import type { ExecutorType } from "../types/api";
+import ExecutorBadge from "./ExecutorBadge";
+import { ExecutorInfoCompact } from "./ExecutorInfo";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
@@ -47,6 +51,10 @@ interface RawTask {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
+  // ⚡ Phase 1 新增：执行器信息
+  executor_type?: ExecutorType;
+  cluster?: string | null;
+  external_job_id?: string | null;
 }
 
 interface TaskOutput {
@@ -800,7 +808,28 @@ export default function TasksTable() {
       return (
         <tr key={task.task_id} className="border-b last:border-b-0 align-top">
           <td className="px-3 py-2 font-medium text-gray-800">
-            <div className="whitespace-normal break-words">{task.job_name || "-"}</div>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 whitespace-normal break-words">
+                <Link
+                  href={`/tasks/${task.task_id}`}
+                  className="text-blue-600 hover:text-blue-700 hover:underline"
+                >
+                  {task.job_name || "-"}
+                </Link>
+                {/* ⚡ 显示执行器标识（紧凑模式，不显示 Local） */}
+                <ExecutorBadge
+                  executorType={task.executor_type}
+                  cluster={task.cluster}
+                  compact={true}
+                />
+              </div>
+              {/* ⚡ 显示执行环境详细信息（仅远程执行器） */}
+              <ExecutorInfoCompact
+                executorType={task.executor_type}
+                cluster={task.cluster}
+                externalJobId={task.external_job_id}
+              />
+            </div>
           </td>
           <td className="px-3 py-2 font-mono text-xs text-gray-600 align-top">
             <div className="break-all leading-5">{task.task_id}</div>

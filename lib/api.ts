@@ -37,30 +37,23 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
-export interface CreateTaskResponse {
-  task_id: string;
-  status?: string;
-  message?: string | null;
-}
+// ⚡ 导入 Phase 1 类型定义
+import type { 
+  ExecutorType, 
+  TaskStatus, 
+  TaskDetail,
+  CreateTaskResponse as CreateTaskRes,
+  TaskOutputsResponse as TaskOutputsRes
+} from '../types/api';
 
-export interface TaskStatusResponse {
-  task_id: string;
-  status: string;
-  message?: string | null;
-  download_url?: string | null;
-  download_name?: string | null;
-  duration?: number | null;
-  elapsed_seconds?: number | null;
-}
+// 兼容旧的类型名称
+export interface CreateTaskResponse extends CreateTaskRes {}
 
-export interface TaskOutputsResponse {
-  task_id: string;
-  base_dir?: string | null;
-  files: Array<string | { name?: string; url?: string }>;
-  file_entries?: Array<{ name?: string; url?: string }>;
-  download_url?: string | null;
-  download_name?: string | null;
-}
+// 扩展 TaskStatusResponse 以支持新字段
+export interface TaskStatusResponse extends TaskStatus {}
+
+// 使用统一的 TaskOutputsResponse
+export interface TaskOutputsResponse extends TaskOutputsRes {}
 
 export async function createTask(formData: FormData) {
   return request<CreateTaskResponse>("/tasks", {
