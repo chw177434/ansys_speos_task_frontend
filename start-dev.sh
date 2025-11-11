@@ -78,5 +78,6 @@ echo -e "${YELLOW}Press Ctrl+C to stop the server${NC}"
 echo ""
 
 # Start the development server
-npm run dev
+# Listen on all network interfaces (0.0.0.0) to allow external access
+npm run dev -- -H 0.0.0.0
 
