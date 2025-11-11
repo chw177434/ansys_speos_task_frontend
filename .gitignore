@@ -24,6 +24,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Server scripts runtime files
+*.pid
+
 # Local environment variables
 .env.local
 .env.development.local
