@@ -14,9 +14,18 @@ NC='\033[0m' # No Color
 LOG_FILE="nextjs-dev.log"
 PID_FILE="nextjs-dev.pid"
 
+# 后端服务器地址配置
+# 可以通过环境变量 BACKEND_URL 指定后端地址
+# 例如: export BACKEND_URL=http://10.100.100.12:8000
+if [ -z "$BACKEND_URL" ]; then
+    export BACKEND_URL="http://localhost:8000"
+fi
+
 echo "========================================="
 echo "  Starting Next.js in Background"
 echo "========================================="
+echo ""
+echo -e "${CYAN}后端服务器: $BACKEND_URL${NC}"
 echo ""
 
 # Check if already running

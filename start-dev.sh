@@ -16,6 +16,14 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# 后端服务器地址配置
+if [ -z "$BACKEND_URL" ]; then
+    export BACKEND_URL="http://localhost:8000"
+fi
+
+echo -e "${CYAN}后端服务器: $BACKEND_URL${NC}"
+echo ""
+
 # Check if Node.js is installed
 echo -e "${CYAN}Checking Node.js installation...${NC}"
 if ! command -v node &> /dev/null; then
