@@ -5,8 +5,10 @@ import {
   API_BASE,
   deleteTask,
   listOutputs,
+  retryTask,
   type TaskOutputsResponse,
   type ProgressInfo,
+  type RetryTaskResponse,
 } from "../lib/api";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -48,7 +50,10 @@ interface RawTask {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
-  progress_info?: ProgressInfo | null; // ✅ 新增：SPEOS 执行进度信息
+  progress_info?: ProgressInfo | null; // ✅ SPEOS 执行进度信息
+  parent_task_id?: string | null; // ✅ 父任务ID（如果是重试任务）
+  retry_count?: number | null; // ✅ 重试次数
+  retried_task_ids?: string[] | null; // ✅ 重试生成的任务列表
 }
 
 interface TaskOutput {
@@ -62,6 +67,7 @@ interface TableTask extends RawTask {
   outputsLoading: boolean;
   outputsError: string | null;
   deleting: boolean;
+  retrying: boolean; // ✅ 重试中状态
   actionError: string | null;
 }
 
@@ -231,6 +237,7 @@ function createRows(items: RawTask[]): TableTask[] {
       outputsLoading: false,
       outputsError: null,
       deleting: false,
+      retrying: false, // ✅ 初始化重试状态
       actionError: null,
     };
   });
@@ -811,6 +818,67 @@ export default function TasksTable() {
     [applyTaskUpdate, fetchTasks, isClientPaging, page, pageSize, totalPages]
   );
 
+  // ✅ 重试任务处理函数
+  const handleRetry = useCallback(
+    async (taskId: string) => {
+      // 确认操作
+      const confirmed = window.confirm(
+        "确定要重新执行此任务吗？\n\n" +
+        "将使用相同的参数重新提交任务。\n" +
+        "文件将被复制到新任务中。"
+      );
+      
+      if (!confirmed) return;
+
+      applyTaskUpdate(taskId, (task) => ({
+        ...task,
+        retrying: true,
+        actionError: null,
+      }));
+
+      try {
+        const result: RetryTaskResponse = await retryTask(taskId, {
+          copy_files: true, // 默认复制文件（更安全）
+        });
+
+        // 显示成功消息
+        const message = 
+          `✅ 任务已重新提交！\n\n` +
+          `新任务ID: ${result.new_task_id}\n` +
+          `状态: ${result.status}\n` +
+          (result.files_copied ? `已复制 ${result.files_copied} 个文件\n` : '') +
+          `\n页面将刷新以显示新任务...`;
+        
+        alert(message);
+
+        // 刷新任务列表
+        const targetPage = isClientPaging ? 1 : page;
+        await fetchTasks(targetPage, pageSize);
+
+        // 触发自定义事件，通知其他组件
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("speos-task-created", {
+              detail: { taskId: result.new_task_id },
+            })
+          );
+        }
+
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "重试任务失败";
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          retrying: false,
+          actionError: message,
+        }));
+        
+        // 显示错误提示
+        alert(`❌ 重试失败\n\n${message}`);
+      }
+    },
+    [applyTaskUpdate, fetchTasks, isClientPaging, page, pageSize]
+  );
+
   const renderBody = () => {
     if (loading) {
       return (
@@ -861,10 +929,31 @@ export default function TasksTable() {
       const statusInfo = getStatusInfo(task.status);
       const badgeClass = statusBadgeClass(task.status);
 
+      // 判断是否可以重试（失败状态）
+      const canRetry = ["FAILURE", "FAILED", "REVOKED", "CANCELLED", "CANCELED", "ABORTED"].includes(task.status);
+
       return (
         <tr key={task.task_id} className="border-b last:border-b-0 align-top">
           <td className="px-3 py-2 font-medium text-gray-800">
             <div className="whitespace-normal break-words">{task.job_name || "-"}</div>
+            
+            {/* ✅ 重试关系信息 */}
+            {task.parent_task_id && (
+              <div className="mt-1 text-xs text-orange-600 flex items-center gap-1">
+                <span>🔄</span>
+                <span>重试自: {task.parent_task_id}</span>
+              </div>
+            )}
+            {task.retry_count != null && task.retry_count > 0 && (
+              <div className="mt-1 text-xs text-orange-600">
+                第 {task.retry_count} 次重试
+              </div>
+            )}
+            {task.retried_task_ids && task.retried_task_ids.length > 0 && (
+              <div className="mt-1 text-xs text-blue-600">
+                已重试 {task.retried_task_ids.length} 次
+              </div>
+            )}
           </td>
           <td className="px-3 py-2 font-mono text-xs text-gray-600 align-top">
             <div className="break-all leading-5">{task.task_id}</div>
@@ -912,6 +1001,18 @@ export default function TasksTable() {
             )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              {/* ✅ 重试按钮（仅失败状态显示） */}
+              {canRetry && (
+                <button
+                  onClick={() => handleRetry(task.task_id)}
+                  disabled={task.retrying}
+                  className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="重新执行此任务"
+                >
+                  {task.retrying ? "重试中..." : "🔄 重新执行"}
+                </button>
+              )}
+              
               <button
                 onClick={() => handleDelete(task.task_id)}
                 disabled={task.deleting}

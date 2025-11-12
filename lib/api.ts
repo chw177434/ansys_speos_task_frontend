@@ -58,7 +58,10 @@ export interface TaskStatusResponse {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
-  progress_info?: ProgressInfo | null; // ✅ 新增：SPEOS 执行进度信息
+  progress_info?: ProgressInfo | null; // ✅ SPEOS 执行进度信息
+  parent_task_id?: string | null; // ✅ 父任务ID（如果是重试任务）
+  retry_count?: number | null; // ✅ 重试次数（0表示原始任务）
+  retried_task_ids?: string[] | null; // ✅ 由此任务生成的重试任务列表
 }
 
 export interface TaskOutputsResponse {
@@ -79,6 +82,56 @@ export async function createTask(formData: FormData) {
 
 export async function getTaskStatus(taskId: string) {
   return request<TaskStatusResponse>(`/tasks/${taskId}`);
+}
+
+// ============= 任务重试接口 =============
+
+/**
+ * 任务重试请求参数
+ */
+export interface RetryTaskRequest {
+  copy_files?: boolean; // 是否复制文件（默认true）
+                       // true: 复制文件（安全，占用空间）
+                       // false: 创建软/硬链接（节省空间，但原文件不能删除）
+  submitter?: string;  // 可选：覆盖提交人信息
+}
+
+/**
+ * 任务重试响应数据
+ */
+export interface RetryTaskResponse {
+  new_task_id: string;      // 新任务ID
+  original_task_id: string; // 原任务ID
+  status: string;           // 新任务状态（通常是PENDING）
+  message: string;          // 说明信息
+  files_copied?: number;    // 复制的文件数量（如果copy_files=true）
+  files_linked?: number;    // 链接的文件数量（如果copy_files=false）
+}
+
+/**
+ * 重试任务
+ * @param taskId 要重试的任务ID
+ * @param options 重试选项
+ * @returns 重试响应数据
+ * 
+ * @example
+ * ```typescript
+ * // 复制文件方式重试（推荐）
+ * const result = await retryTask('task_123', { copy_files: true });
+ * console.log(`新任务ID: ${result.new_task_id}`);
+ * 
+ * // 使用链接方式重试（节省空间）
+ * const result = await retryTask('task_123', { copy_files: false });
+ * ```
+ */
+export async function retryTask(
+  taskId: string,
+  options: RetryTaskRequest = { copy_files: true }
+): Promise<RetryTaskResponse> {
+  return request<RetryTaskResponse>(`/tasks/${taskId}/retry`, {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
 }
 
 export async function listOutputs(taskId: string) {
