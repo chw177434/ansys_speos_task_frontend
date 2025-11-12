@@ -43,6 +43,13 @@ export interface CreateTaskResponse {
   message?: string | null;
 }
 
+// SPEOS 任务执行进度信息（后端实时捕获）
+export interface ProgressInfo {
+  estimated_time?: string | null;      // 预期执行时间，如 "2.5 hours"
+  progress_percent?: number | null;    // 进度百分比，0-100
+  current_step?: string | null;        // 当前步骤，如 "10/10"
+}
+
 export interface TaskStatusResponse {
   task_id: string;
   status: string;
@@ -51,6 +58,7 @@ export interface TaskStatusResponse {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
+  progress_info?: ProgressInfo | null; // ✅ 新增：SPEOS 执行进度信息
 }
 
 export interface TaskOutputsResponse {
@@ -423,6 +431,89 @@ export function formatTime(seconds: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return `${hours} 小时 ${mins} 分`;
+}
+
+// ============= SPEOS 进度信息工具函数 =============
+
+/**
+ * 检查任务是否有有效的进度信息
+ * @param progressInfo 进度信息对象
+ * @returns 是否有有效的进度信息
+ */
+export function hasValidProgressInfo(progressInfo: ProgressInfo | null | undefined): boolean {
+  if (!progressInfo) return false;
+  
+  const hasEstimatedTime = progressInfo.estimated_time && progressInfo.estimated_time.trim() !== "";
+  const hasProgressPercent = progressInfo.progress_percent != null && isFinite(progressInfo.progress_percent);
+  const hasCurrentStep = progressInfo.current_step && progressInfo.current_step.trim() !== "";
+  
+  return hasEstimatedTime || hasProgressPercent || hasCurrentStep;
+}
+
+/**
+ * 格式化进度百分比
+ * @param percent 百分比值 (0-100)
+ * @returns 格式化后的字符串
+ */
+export function formatProgressPercent(percent: number | null | undefined): string {
+  if (percent == null || !isFinite(percent)) {
+    return "-";
+  }
+  return `${Math.round(percent)}%`;
+}
+
+/**
+ * 从 Celery 任务结果中提取进度信息的辅助函数
+ * @param result Celery 任务结果对象
+ * @returns 进度信息对象或 null
+ * 
+ * @example
+ * ```typescript
+ * const result = await getTaskStatus(taskId);
+ * const progressInfo = extractProgressInfo(result);
+ * 
+ * if (progressInfo) {
+ *   console.log(`预计时间: ${progressInfo.estimated_time}`);
+ *   console.log(`进度: ${progressInfo.progress_percent}%`);
+ *   console.log(`当前步骤: ${progressInfo.current_step}`);
+ * }
+ * ```
+ */
+export function extractProgressInfo(result: TaskStatusResponse): ProgressInfo | null {
+  return result.progress_info || null;
+}
+
+/**
+ * 获取进度信息的摘要描述（用于 UI 显示）
+ * @param progressInfo 进度信息对象
+ * @returns 摘要字符串
+ * 
+ * @example
+ * ```typescript
+ * const summary = getProgressSummary(progressInfo);
+ * // "执行中: 45% (步骤 3/10, 预计 2.5 hours)"
+ * ```
+ */
+export function getProgressSummary(progressInfo: ProgressInfo | null | undefined): string {
+  if (!progressInfo || !hasValidProgressInfo(progressInfo)) {
+    return "-";
+  }
+  
+  const parts: string[] = [];
+  
+  if (progressInfo.progress_percent != null && isFinite(progressInfo.progress_percent)) {
+    parts.push(`${formatProgressPercent(progressInfo.progress_percent)}`);
+  }
+  
+  if (progressInfo.current_step) {
+    parts.push(`步骤 ${progressInfo.current_step}`);
+  }
+  
+  if (progressInfo.estimated_time) {
+    parts.push(`预计 ${progressInfo.estimated_time}`);
+  }
+  
+  return parts.length > 0 ? parts.join(", ") : "-";
 }
 
 // ============= 断点续传相关接口 =============

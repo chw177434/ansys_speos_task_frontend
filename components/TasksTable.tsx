@@ -6,6 +6,7 @@ import {
   deleteTask,
   listOutputs,
   type TaskOutputsResponse,
+  type ProgressInfo,
 } from "../lib/api";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -47,6 +48,7 @@ interface RawTask {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
+  progress_info?: ProgressInfo | null; // ✅ 新增：SPEOS 执行进度信息
 }
 
 interface TaskOutput {
@@ -256,6 +258,68 @@ function formatDuration(totalSecondsInput: number): string {
   parts.push(`${seconds}秒`);
 
   return parts.join("");
+}
+
+// 格式化进度百分比
+function formatProgressPercent(percent: number | null | undefined): string {
+  if (percent == null || !Number.isFinite(percent)) {
+    return "-";
+  }
+  return `${Math.round(percent)}%`;
+}
+
+// 渲染进度信息组件（美化显示）
+function renderProgressInfo(progressInfo: ProgressInfo | null | undefined): JSX.Element | null {
+  if (!progressInfo) return null;
+
+  const { estimated_time, progress_percent, current_step } = progressInfo;
+  
+  // 检查是否有任何有效的进度信息
+  const hasEstimatedTime = estimated_time && estimated_time.trim() !== "";
+  const hasProgressPercent = progress_percent != null && Number.isFinite(progress_percent);
+  const hasCurrentStep = current_step && current_step.trim() !== "";
+  
+  if (!hasEstimatedTime && !hasProgressPercent && !hasCurrentStep) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 space-y-1 rounded-md bg-blue-50 px-2 py-1.5 text-xs">
+      {/* 进度百分比 */}
+      {hasProgressPercent && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-blue-700 font-medium">执行进度:</span>
+          <div className="flex items-center gap-2 flex-1">
+            <div className="flex-1 h-1.5 bg-blue-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, progress_percent!))}%` }}
+              />
+            </div>
+            <span className="text-blue-800 font-semibold min-w-[3rem] text-right">
+              {formatProgressPercent(progress_percent)}
+            </span>
+          </div>
+        </div>
+      )}
+      
+      {/* 当前步骤 */}
+      {hasCurrentStep && (
+        <div className="flex items-center justify-between">
+          <span className="text-blue-700 font-medium">当前步骤:</span>
+          <span className="text-blue-800 font-mono">{current_step}</span>
+        </div>
+      )}
+      
+      {/* 预期时间 */}
+      {hasEstimatedTime && (
+        <div className="flex items-center justify-between">
+          <span className="text-blue-700 font-medium">预计时间:</span>
+          <span className="text-blue-800">{estimated_time}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // 状态信息定义：包含图标、文案、颜色、分类
@@ -816,6 +880,8 @@ export default function TasksTable() {
             <div className="mt-2 text-xs text-gray-500" title={`状态更新时间: ${statusTime}`}>
               {statusTime}
             </div>
+            {/* ✅ 新增：显示 SPEOS 执行进度信息 */}
+            {renderProgressInfo(task.progress_info)}
           </td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{durationText}</td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{submittedAt}</td>
