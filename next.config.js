@@ -6,17 +6,15 @@ const nextConfig = {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
     
     return [
-      // 规则1：新的 v2 接口，保留 /api 前缀
-      // /api/v2/upload/config -> http://localhost:8000/api/v2/upload/config
-      {
-        source: '/api/v2/:path*',
-        destination: `${backendUrl}/api/v2/:path*`,
-      },
-      // 规则2：旧接口（tasks等），去掉 /api 前缀
-      // /api/tasks -> http://localhost:8000/tasks
+      // 后端已统一路径，所有接口都有 /api 前缀
+      // 前端 /api/* -> 后端 /api/*
+      // 示例：
+      //   /api/v2/upload/config -> http://localhost:8000/api/v2/upload/config
+      //   /api/tasks -> http://localhost:8000/api/tasks
+      //   /api/tasks/{id} -> http://localhost:8000/api/tasks/{id}
       {
         source: '/api/:path*',
-        destination: `${backendUrl}/:path*`,
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
