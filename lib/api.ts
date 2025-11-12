@@ -160,6 +160,13 @@ export async function submitDirectUpload(
 
     const xhr = new XMLHttpRequest();
     
+    // Direct Upload 使用独立的后端地址（不通过 Next.js 代理）
+    // 因为文件上传可能很大，不适合通过代理
+    // 自动使用当前主机的后端地址（端口8000）
+    const directBackendUrl = typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:8000`
+      : 'http://localhost:8000';
+    
     let startTime = Date.now();
     let lastLoaded = 0;
     let lastTime = Date.now();
@@ -227,7 +234,9 @@ export async function submitDirectUpload(
     xhr.ontimeout = () => reject(new Error("上传超时"));
     xhr.onabort = () => reject(new Error("上传已取消"));
 
-    xhr.open("POST", `${API_BASE}/tasks/submit-direct`);
+    // Direct Upload 直接连接后端，不通过 Next.js 代理
+    // 避免代理的请求大小和超时限制
+    xhr.open("POST", `${directBackendUrl}/tasks/submit-direct`);
     
     // 大文件设置更长的超时时间
     const totalSize = params.master_file.size + (params.include_file?.size || 0);
