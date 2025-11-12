@@ -16,8 +16,12 @@ import {
   formatSpeed,
   formatTime,
   formatFileSize,
+  getUploadConfig,
+  submitDirectUpload,
   type CreateTaskResponse,
   type UploadProgressInfo,
+  type UploadConfigResponse,
+  type DirectUploadParams,
 } from "../lib/api";
 import {
   uploadFileWithResumable,
@@ -141,6 +145,11 @@ export default function UploadForm() {
     status?: string;
     message?: string | null;
   } | null>(null);
+
+  // 上传模式配置
+  const [uploadMode, setUploadMode] = useState<"direct" | "tos" | null>(null);
+  const [uploadConfig, setUploadConfig] = useState<UploadConfigResponse | null>(null);
+  const [configLoading, setConfigLoading] = useState<boolean>(true);
 
   // TOS 上传相关状态
   const [uploadStep, setUploadStep] = useState<string>("");
@@ -272,6 +281,28 @@ export default function UploadForm() {
   const masterFileLabel = masterFile?.name ?? "";
   const includeFileLabel = includeFile?.name ?? "";
 
+  // 获取上传模式配置
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        setConfigLoading(true);
+        const config = await getUploadConfig();
+        setUploadConfig(config);
+        setUploadMode(config.upload_mode);
+        console.log(`📡 获取上传配置成功: ${config.upload_mode} 模式`);
+      } catch (error) {
+        console.warn("获取上传配置失败，使用默认 TOS 模式", error);
+        // 如果获取配置失败，默认使用 TOS 模式
+        setUploadMode("tos");
+        setUploadConfig({ upload_mode: "tos" });
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+
+    fetchConfig();
+  }, []);
+
   // 检查 localStorage 中的未完成上传
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -350,12 +381,96 @@ export default function UploadForm() {
     currentUploadIdRef.current = null;
   };
 
+  // Direct 模式上传处理函数
+  const handleDirectUpload = async (
+    masterFile: File,
+    includeArchive: File | null
+  ) => {
+    setUploadStep("🚀 Direct 模式：直接上传文件到服务器");
+    
+    try {
+      const params: DirectUploadParams = {
+        master_file: masterFile,
+        include_file: includeArchive || undefined,
+        profile_name: profileName.trim(),
+        version: version.trim(),
+        job_name: jobName.trim(),
+        project_dir: projectDir.trim() || undefined,
+        use_gpu: useGpu || undefined,
+        simulation_index: simulationIndex.trim() || undefined,
+        thread_count: threadCount.trim() || undefined,
+        priority: priority.trim() || undefined,
+        ray_count: rayCount.trim() || undefined,
+        duration_minutes: durationMinutes.trim() || undefined,
+        hpc_job_name: hpcJobName.trim() || undefined,
+        node_count: nodeCount.trim() || undefined,
+        walltime_hours: walltimeHours.trim() || undefined,
+      };
+
+      const result = await submitDirectUpload(
+        params,
+        (info: UploadProgressInfo) => {
+          setUploadProgress(info.progress);
+          setUploadSpeed(info.speed);
+          setEstimatedTime(info.estimatedTime);
+        },
+        abortControllerRef.current?.signal
+      );
+
+      setUploadProgress(100);
+      setUploadStep("🎉 完成！");
+
+      // 更新历史记录为成功
+      const uploadId = currentUploadIdRef.current;
+      if (uploadId) {
+        setUploadHistory((prev) =>
+          prev.map((item) =>
+            item.id === uploadId
+              ? { ...item, status: "success" as const, progress: 100, taskId: result.task_id }
+              : item
+          )
+        );
+        console.log(`✅ Direct 上传成功，任务ID: ${result.task_id}`);
+      }
+
+      setSubmitInfo({
+        taskId: result.task_id,
+        status: result.status,
+        message: result.message ?? null,
+      });
+
+      // 3秒后自动隐藏成功提示
+      setTimeout(() => {
+        setSubmitInfo(null);
+      }, 3000);
+
+      resetForm();
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("speos-task-created", {
+            detail: { taskId: result.task_id },
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Direct 上传失败", error);
+      throw error;
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     
     // 防止重复提交：如果已经在提交中，直接返回
     if (submitting) {
       console.warn("任务正在提交中，请勿重复提交");
+      return;
+    }
+    
+    // 等待配置加载完成
+    if (configLoading || uploadMode === null) {
+      setFormError("正在加载上传配置，请稍候...");
       return;
     }
     
@@ -404,41 +519,51 @@ export default function UploadForm() {
       includeArchive = includeFile;
     }
 
-    // 文件大小阈值
-    const SIMPLE_UPLOAD_THRESHOLD = 50 * 1024 * 1024; // 50MB - 简单上传（旧流程）
-    const RESUMABLE_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB - 断点续传
-    
     const masterFileSize = masterFile.size;
     const includeFileSize = includeArchive?.size || 0;
     const totalSize = masterFileSize + includeFileSize;
 
-    // 判断使用哪种上传方式
-    let uploadMode: "simple" | "resumable" = "simple";
-    
-    if (totalSize >= RESUMABLE_UPLOAD_THRESHOLD) {
-      uploadMode = "resumable"; // >=10MB：使用断点续传
-    }
-
-    // 大文件警告（100MB 以上）
-    if (totalSize > 100 * 1024 * 1024) {
-      const sizeInMB = Math.round(totalSize / 1024 / 1024);
-      const confirmed = window.confirm(
-        `文件较大（${sizeInMB} MB），将使用断点续传上传，支持暂停恢复。是否继续？`
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-
     setSubmitting(true);
 
     try {
-      if (uploadMode === "resumable") {
-        // ========== 断点续传流程 ==========
-        await handleResumableUpload(masterFile, includeArchive);
+      // ========== 根据上传模式选择不同的上传策略 ==========
+      if (uploadMode === "direct") {
+        // Direct 模式：直接上传到服务器（内网直连）
+        console.log("📡 使用 Direct 模式上传（内网直连）");
+        await handleDirectUpload(masterFile, includeArchive);
       } else {
-        // ========== 简单上传流程 ==========
-        await handleOldFlowUpload(masterFile, includeArchive);
+        // TOS 模式：上传到对象存储
+        console.log("📡 使用 TOS 模式上传（对象存储）");
+        
+        // 文件大小阈值
+        const RESUMABLE_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB - 断点续传
+        
+        // 判断使用哪种 TOS 上传方式
+        let tosUploadMode: "simple" | "resumable" = "simple";
+        
+        if (totalSize >= RESUMABLE_UPLOAD_THRESHOLD) {
+          tosUploadMode = "resumable"; // >=10MB：使用断点续传
+        }
+
+        // 大文件警告（100MB 以上）
+        if (totalSize > 100 * 1024 * 1024) {
+          const sizeInMB = Math.round(totalSize / 1024 / 1024);
+          const confirmed = window.confirm(
+            `文件较大（${sizeInMB} MB），将使用断点续传上传，支持暂停恢复。是否继续？`
+          );
+          if (!confirmed) {
+            setSubmitting(false);
+            return;
+          }
+        }
+
+        if (tosUploadMode === "resumable") {
+          // 断点续传流程
+          await handleResumableUpload(masterFile, includeArchive);
+        } else {
+          // 简单上传流程
+          await handleOldFlowUpload(masterFile, includeArchive);
+        }
       }
     } catch (error) {
       let message = "提交任务失败";
@@ -975,6 +1100,58 @@ export default function UploadForm() {
           填写任务信息并上传 Master File（必选）与 Include 压缩包（可选），提交后任务会自动出现在右侧列表中。
         </p>
       </header>
+
+      {/* 上传模式显示 */}
+      {!configLoading && uploadMode && (
+        <div className={`rounded-lg border-2 p-3 ${
+          uploadMode === "direct" 
+            ? "border-green-200 bg-green-50" 
+            : "border-blue-200 bg-blue-50"
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="text-xl">
+              {uploadMode === "direct" ? "🚀" : "☁️"}
+            </span>
+            <div className="flex-1">
+              <h3 className={`text-sm font-semibold ${
+                uploadMode === "direct" ? "text-green-900" : "text-blue-900"
+              }`}>
+                {uploadMode === "direct" ? "内网直连模式" : "云端存储模式"}
+              </h3>
+              <p className={`text-xs ${
+                uploadMode === "direct" ? "text-green-700" : "text-blue-700"
+              }`}>
+                {uploadMode === "direct" 
+                  ? "文件将直接上传到服务器，速度更快（适用于内网环境）" 
+                  : "文件将上传到对象存储，支持断点续传（适用于公网环境）"}
+              </p>
+            </div>
+            {uploadConfig?.max_file_size_mb && (
+              <div className="text-right">
+                <p className={`text-xs font-medium ${
+                  uploadMode === "direct" ? "text-green-800" : "text-blue-800"
+                }`}>
+                  文件限制
+                </p>
+                <p className={`text-xs ${
+                  uploadMode === "direct" ? "text-green-600" : "text-blue-600"
+                }`}>
+                  {uploadConfig.max_file_size_mb} MB
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {configLoading && (
+        <div className="rounded-lg border-2 border-gray-200 bg-gray-50 p-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⏳</span>
+            <p className="text-sm text-gray-700">正在加载上传配置...</p>
+          </div>
+        </div>
+      )}
 
       {/* 未完成上传提示（断点续传） */}
       {pendingUploads.length > 0 && (

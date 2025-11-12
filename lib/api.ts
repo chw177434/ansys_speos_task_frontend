@@ -83,6 +83,161 @@ export async function deleteTask(taskId: string) {
   });
 }
 
+// ============= 上传配置接口 =============
+
+export interface UploadConfigResponse {
+  upload_mode: "direct" | "tos";
+  max_file_size_mb?: number;
+  chunk_size_mb?: number;
+}
+
+export async function getUploadConfig() {
+  return request<UploadConfigResponse>("/v2/upload/config", {
+    method: "GET",
+  });
+}
+
+// ============= Direct 上传模式接口 =============
+
+export interface DirectUploadParams {
+  master_file: File;
+  include_file?: File;
+  profile_name: string;
+  version: string;
+  job_name: string;
+  job_key?: string;
+  display_name?: string;
+  use_gpu?: boolean;
+  simulation_index?: string;
+  thread_count?: string;
+  priority?: string;
+  ray_count?: string;
+  duration_minutes?: string;
+  hpc_job_name?: string;
+  node_count?: string;
+  walltime_hours?: string;
+  project_dir?: string;
+}
+
+export interface DirectUploadResponse {
+  task_id: string;
+  status: string;
+  message?: string;
+}
+
+export async function submitDirectUpload(
+  params: DirectUploadParams,
+  onProgress?: (info: UploadProgressInfo) => void,
+  abortSignal?: AbortSignal
+): Promise<DirectUploadResponse> {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    
+    // 添加文件
+    formData.append("master_file", params.master_file);
+    if (params.include_file) {
+      formData.append("include_file", params.include_file);
+    }
+    
+    // 添加必需参数
+    formData.append("profile_name", params.profile_name);
+    formData.append("version", params.version);
+    formData.append("job_name", params.job_name);
+    
+    // 添加可选参数（转为字符串）
+    if (params.job_key) formData.append("job_key", params.job_key);
+    if (params.display_name) formData.append("display_name", params.display_name);
+    if (params.use_gpu !== undefined) formData.append("use_gpu", String(params.use_gpu));
+    if (params.simulation_index) formData.append("simulation_index", params.simulation_index);
+    if (params.thread_count) formData.append("thread_count", params.thread_count);
+    if (params.priority) formData.append("priority", params.priority);
+    if (params.ray_count) formData.append("ray_count", params.ray_count);
+    if (params.duration_minutes) formData.append("duration_minutes", params.duration_minutes);
+    if (params.hpc_job_name) formData.append("hpc_job_name", params.hpc_job_name);
+    if (params.node_count) formData.append("node_count", params.node_count);
+    if (params.walltime_hours) formData.append("walltime_hours", params.walltime_hours);
+    if (params.project_dir) formData.append("project_dir", params.project_dir);
+
+    const xhr = new XMLHttpRequest();
+    
+    let startTime = Date.now();
+    let lastLoaded = 0;
+    let lastTime = Date.now();
+
+    // 监听取消信号
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        reject(new Error("上传已取消"));
+        return;
+      }
+      
+      abortSignal.addEventListener("abort", () => {
+        xhr.abort();
+        reject(new Error("上传已取消"));
+      });
+    }
+
+    // 上传进度监控
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const now = Date.now();
+          const timeDiff = (now - lastTime) / 1000;
+          const loadedDiff = e.loaded - lastLoaded;
+          
+          const speed = timeDiff > 0 ? loadedDiff / timeDiff : 0;
+          const remaining = e.total - e.loaded;
+          const estimatedTime = speed > 0 ? remaining / speed : 0;
+          const progress = Math.round((e.loaded / e.total) * 100);
+          
+          onProgress({
+            progress,
+            loaded: e.loaded,
+            total: e.total,
+            speed,
+            estimatedTime,
+          });
+          
+          lastLoaded = e.loaded;
+          lastTime = now;
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText) as DirectUploadResponse;
+          resolve(response);
+        } catch (error) {
+          reject(new Error("解析响应失败"));
+        }
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          const errorMessage = errorData?.detail || errorData?.message || xhr.statusText;
+          reject(new Error(errorMessage));
+        } catch {
+          reject(new Error(`上传失败: ${xhr.status} ${xhr.statusText}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("网络错误，上传失败"));
+    xhr.ontimeout = () => reject(new Error("上传超时"));
+    xhr.onabort = () => reject(new Error("上传已取消"));
+
+    xhr.open("POST", `${API_BASE}/tasks/submit-direct`);
+    
+    // 大文件设置更长的超时时间
+    const totalSize = params.master_file.size + (params.include_file?.size || 0);
+    const timeoutMinutes = totalSize > 100 * 1024 * 1024 ? 30 : 10;
+    xhr.timeout = timeoutMinutes * 60 * 1000;
+
+    xhr.send(formData);
+  });
+}
+
 // ============= TOS 上传相关接口 =============
 
 export interface InitUploadResponse {
