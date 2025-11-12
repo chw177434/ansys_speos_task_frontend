@@ -291,10 +291,15 @@ export default function UploadForm() {
         setUploadMode(config.upload_mode);
         console.log(`📡 获取上传配置成功: ${config.upload_mode} 模式`);
       } catch (error) {
-        console.warn("获取上传配置失败，使用默认 TOS 模式", error);
-        // 如果获取配置失败，默认使用 TOS 模式
-        setUploadMode("tos");
-        setUploadConfig({ upload_mode: "tos" });
+        console.warn("获取上传配置失败，使用 Direct 模式作为默认", error);
+        // 临时方案：如果后端配置接口不可用，默认使用 Direct 模式
+        // 因为服务器已配置为 Direct 模式，前端直接使用即可
+        setUploadMode("direct");
+        setUploadConfig({ 
+          upload_mode: "direct",
+          max_file_size_mb: 5120  // 默认 5GB
+        });
+        console.log("✅ 使用默认 Direct 模式（内网直连）");
       } finally {
         setConfigLoading(false);
       }
