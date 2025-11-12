@@ -8,7 +8,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${backendUrl}/:path*`, // 后端服务器地址
+        destination: `${backendUrl}/api/:path*`, // 保留 /api 前缀
       },
     ];
   },
