@@ -63,21 +63,21 @@ export interface TaskOutputsResponse {
 }
 
 export async function createTask(formData: FormData) {
-  return request<CreateTaskResponse>("/tasks", {
+  return request<CreateTaskResponse>("/api/tasks", {
     method: "POST",
     body: formData,
   });
 }
 
 export async function getTaskStatus(taskId: string) {
-  return request<TaskStatusResponse>(`/tasks/${taskId}`);
+  return request<TaskStatusResponse>(`/api/tasks/${taskId}`);
 }
 
 export async function listOutputs(taskId: string) {
-  return request<TaskOutputsResponse>(`/tasks/${taskId}/outputs`);
+  return request<TaskOutputsResponse>(`/api/tasks/${taskId}/outputs`);
 }
 export async function deleteTask(taskId: string) {
-  await request<void>(`/tasks/${taskId}`, {
+  await request<void>(`/api/tasks/${taskId}`, {
     method: "DELETE",
     parseJson: false,
   });
@@ -236,7 +236,7 @@ export async function submitDirectUpload(
 
     // Direct Upload 直接连接后端，不通过 Next.js 代理
     // 避免代理的请求大小和超时限制
-    xhr.open("POST", `${directBackendUrl}/tasks/submit-direct`);
+    xhr.open("POST", `${directBackendUrl}/api/tasks/submit-direct`);
     
     // 大文件设置更长的超时时间
     const totalSize = params.master_file.size + (params.include_file?.size || 0);
@@ -299,14 +299,14 @@ export interface ConfirmUploadResponse {
 }
 
 export async function initUpload(data: InitUploadRequest) {
-  return request<InitUploadResponse>("/tasks/upload/init", {
+  return request<InitUploadResponse>("/api/tasks/upload/init", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
 export async function confirmUpload(data: ConfirmUploadRequest) {
-  return request<ConfirmUploadResponse>("/tasks/upload/confirm", {
+  return request<ConfirmUploadResponse>("/api/tasks/upload/confirm", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -490,7 +490,7 @@ export interface AbortMultipartUploadRequest {
 
 // 1. 初始化分片上传
 export async function initMultipartUpload(data: InitMultipartUploadRequest) {
-  return request<InitMultipartUploadResponse>("/tasks/upload/multipart/init", {
+  return request<InitMultipartUploadResponse>("/api/tasks/upload/multipart/init", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -556,7 +556,7 @@ export async function uploadPart(
 
 // 3. 完成分片上传
 export async function completeMultipartUpload(data: CompleteMultipartUploadRequest) {
-  return request<CompleteMultipartUploadResponse>("/tasks/upload/multipart/complete", {
+  return request<CompleteMultipartUploadResponse>("/api/tasks/upload/multipart/complete", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -564,7 +564,7 @@ export async function completeMultipartUpload(data: CompleteMultipartUploadReque
 
 // 4. 查询已上传的分片（断点续传）
 export async function listUploadedParts(data: ListUploadedPartsRequest) {
-  return request<ListUploadedPartsResponse>("/tasks/upload/multipart/list", {
+  return request<ListUploadedPartsResponse>("/api/tasks/upload/multipart/list", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -572,7 +572,7 @@ export async function listUploadedParts(data: ListUploadedPartsRequest) {
 
 // 5. 取消分片上传
 export async function abortMultipartUpload(data: AbortMultipartUploadRequest) {
-  return request<void>("/tasks/upload/multipart/abort", {
+  return request<void>("/api/tasks/upload/multipart/abort", {
     method: "POST",
     body: JSON.stringify(data),
     parseJson: false,
