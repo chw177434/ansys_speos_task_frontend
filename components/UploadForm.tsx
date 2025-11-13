@@ -27,6 +27,10 @@ import {
   uploadFileWithResumable,
   type UploadProgressInfo as ResumableProgressInfo,
 } from "../lib/resumableUpload";
+import {
+  uploadFileWithDirectResumable,
+  type DirectUploadProgressInfo,
+} from "../lib/directResumableUpload";
 
 const FORM_STATE_KEY = "speos_task_form_state";
 
@@ -191,6 +195,7 @@ export default function UploadForm() {
     uploadedChunks: number;
     totalChunks: number;
     fileType: string;
+    uploadMode: "tos" | "direct";
   }>>([]);
 
   const masterInputRef = useRef<HTMLInputElement | null>(null);
@@ -308,7 +313,7 @@ export default function UploadForm() {
     fetchConfig();
   }, []);
 
-  // 检查 localStorage 中的未完成上传
+  // 检查 localStorage 中的未完成上传（TOS 和 Direct 模式）
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -319,9 +324,11 @@ export default function UploadForm() {
         uploadedChunks: number;
         totalChunks: number;
         fileType: string;
+        uploadMode: "tos" | "direct";
       }> = [];
 
       Object.keys(localStorage).forEach((key) => {
+        // TOS 模式的上传
         if (key.startsWith("resumable_upload_")) {
           try {
             const data = JSON.parse(localStorage.getItem(key) || "{}");
@@ -332,10 +339,30 @@ export default function UploadForm() {
                 uploadedChunks: data.uploaded_parts.length,
                 totalChunks: data.total_chunks,
                 fileType: data.file_type,
+                uploadMode: "tos",
               });
             }
           } catch (error) {
-            console.warn("解析上传进度失败", error);
+            console.warn("解析TOS上传进度失败", error);
+          }
+        }
+        
+        // Direct 模式的上传
+        if (key.startsWith("direct_upload_")) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || "{}");
+            if (data.uploaded_parts && data.uploaded_parts.length < data.total_chunks) {
+              pending.push({
+                taskId: data.task_id,
+                filename: data.filename,
+                uploadedChunks: data.uploaded_parts.length,
+                totalChunks: data.total_chunks,
+                fileType: data.file_type,
+                uploadMode: "direct",
+              });
+            }
+          } catch (error) {
+            console.warn("解析Direct上传进度失败", error);
           }
         }
       });
@@ -386,7 +413,7 @@ export default function UploadForm() {
     currentUploadIdRef.current = null;
   };
 
-  // Direct 模式上传处理函数
+  // Direct 模式上传处理函数（旧方式，不支持断点续传）
   const handleDirectUpload = async (
     masterFile: File,
     includeArchive: File | null
@@ -464,6 +491,248 @@ export default function UploadForm() {
     }
   };
 
+  // Direct 模式断点续传流程（新方式，支持断点续传）
+  const handleDirectResumableUpload = async (
+    masterFile: File,
+    includeArchive: File | null
+  ) => {
+    setIsResumableUpload(true);
+    setUploadStep("📦 Direct 模式：使用断点续传");
+
+    let masterTaskId: string | null = null;
+    let masterFilePath: string | null = null;
+    let includeFilePath: string | null = null;
+
+    try {
+      // 步骤 0: 检查是否有未完成的上传（智能匹配）
+      let existingMasterTaskId: string | undefined;
+      let existingMasterUploadId: string | undefined;
+      
+      // 尝试通过文件名和大小匹配未完成的上传
+      if (typeof window !== "undefined") {
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("direct_upload_") && key.endsWith("_master")) {
+            try {
+              const data = JSON.parse(localStorage.getItem(key) || "{}");
+              // 匹配条件：文件名和大小相同
+              if (data.filename === masterFile.name && data.file_size === masterFile.size) {
+                existingMasterTaskId = data.task_id;
+                existingMasterUploadId = data.upload_id;
+                console.log(`🔍 [Direct] 发现匹配的未完成上传: ${data.filename}, taskId=${existingMasterTaskId}`);
+              }
+            } catch (error) {
+              console.warn("[Direct] 解析上传进度失败", error);
+            }
+          }
+        });
+      }
+
+      // 步骤 1: 上传 Master 文件（分片）
+      setUploadStep("⬆️ [Direct] 上传 Master 文件（分片模式）");
+      
+      const masterResult = await uploadFileWithDirectResumable(
+        masterFile,
+        masterFile.name,
+        "master",
+        {
+          existingTaskId: existingMasterTaskId,
+          existingUploadId: existingMasterUploadId,
+          onProgress: (info: DirectUploadProgressInfo) => {
+            setTotalChunks(info.totalChunks);
+            setUploadedChunks(info.uploadedChunks);
+            setCurrentChunk(info.currentChunk);
+            setUploadProgress(info.progress);
+            setUploadSpeed(info.speed);
+            setEstimatedTime(info.estimatedTime);
+            setMasterProgress(info.progress);
+          },
+          onChunkComplete: (chunkIndex: number, totalChunks: number) => {
+            console.log(`✅ [Direct] Master 分片 ${chunkIndex}/${totalChunks} 上传完成`);
+          },
+          abortSignal: abortControllerRef.current?.signal,
+        }
+      );
+
+      masterTaskId = masterResult.taskId;
+      masterFilePath = masterResult.filePath;
+      console.log(`✅ [Direct] Master 文件上传完成: ${masterResult.filePath}`);
+
+      // 步骤 2: 如果有 include 文件，也使用分片上传
+      if (includeArchive) {
+        setUploadStep("⬆️ [Direct] 上传 Include 文件（分片模式）");
+        
+        // 检查 include 文件的未完成上传
+        let existingIncludeTaskId: string | undefined;
+        let existingIncludeUploadId: string | undefined;
+        
+        const includeFilename = includeArchive.name;
+        if (typeof window !== "undefined") {
+          Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith("direct_upload_") && key.endsWith("_include")) {
+              try {
+                const data = JSON.parse(localStorage.getItem(key) || "{}");
+                if (data.filename === includeFilename && data.file_size === includeArchive.size) {
+                  existingIncludeTaskId = data.task_id;
+                  existingIncludeUploadId = data.upload_id;
+                  console.log(`🔍 [Direct] 发现匹配的未完成上传: ${data.filename}, taskId=${existingIncludeTaskId}`);
+                }
+              } catch (error) {
+                console.warn("[Direct] 解析上传进度失败", error);
+              }
+            }
+          });
+        }
+        
+        const includeResult = await uploadFileWithDirectResumable(
+          includeArchive,
+          includeFilename,
+          "include",
+          {
+            existingTaskId: existingIncludeTaskId,
+            existingUploadId: existingIncludeUploadId,
+            onProgress: (info: DirectUploadProgressInfo) => {
+              setTotalChunks(info.totalChunks);
+              setUploadedChunks(info.uploadedChunks);
+              setCurrentChunk(info.currentChunk);
+              // 综合进度：master 50% + include 50%
+              const combinedProgress = 50 + (info.progress * 0.5);
+              setUploadProgress(Math.round(combinedProgress));
+              setUploadSpeed(info.speed);
+              setEstimatedTime(info.estimatedTime);
+              setIncludeProgress(info.progress);
+            },
+            onChunkComplete: (chunkIndex: number, totalChunks: number) => {
+              console.log(`✅ [Direct] Include 分片 ${chunkIndex}/${totalChunks} 上传完成`);
+            },
+            abortSignal: abortControllerRef.current?.signal,
+          }
+        );
+
+        includeFilePath = includeResult.filePath;
+        console.log(`✅ [Direct] Include 文件上传完成: ${includeResult.filePath}`);
+      }
+
+      // 步骤 3: 提交任务（使用 confirmUpload）
+      setUploadStep("✅ 提交任务...");
+      setUploadProgress(95);
+
+      // Direct 模式上传完成后，需要创建任务
+      // 注意：这里需要使用 Direct 模式的任务创建接口
+      // 由于文件已上传，我们需要使用特殊的确认接口
+      
+      // 临时方案：使用旧的 Direct 模式提交（文件已在服务器，只需创建任务）
+      // 实际应该有一个专门的 Direct 模式确认接口
+      
+      const formData = new FormData();
+      formData.append("profile_name", profileName.trim());
+      formData.append("version", version.trim());
+      formData.append("job_name", jobName.trim());
+      formData.append("task_id", masterTaskId);  // 传递已上传的任务ID
+      formData.append("master_file_path", masterFilePath);  // 传递已上传的文件路径
+      
+      if (includeFilePath) {
+        formData.append("include_file_path", includeFilePath);
+      }
+
+      const projectDirValue = projectDir.trim();
+      if (projectDirValue) {
+        formData.append("project_dir", projectDirValue);
+      }
+
+      if (useGpu) {
+        formData.append("use_gpu", "true");
+      }
+
+      const trimmedSimulation = simulationIndex.trim();
+      if (trimmedSimulation) {
+        formData.append("simulation_index", trimmedSimulation);
+      }
+
+      const trimmedThreads = threadCount.trim();
+      if (trimmedThreads) {
+        formData.append("thread_count", trimmedThreads);
+      }
+
+      const trimmedPriority = priority.trim();
+      if (trimmedPriority) {
+        formData.append("priority", trimmedPriority);
+      }
+
+      const trimmedRays = rayCount.trim();
+      if (trimmedRays) {
+        formData.append("ray_count", trimmedRays);
+      }
+
+      const trimmedDuration = durationMinutes.trim();
+      if (trimmedDuration) {
+        formData.append("duration_minutes", trimmedDuration);
+      }
+
+      const trimmedJobName = hpcJobName.trim();
+      if (trimmedJobName) {
+        formData.append("hpc_job_name", trimmedJobName);
+      }
+
+      const trimmedNodes = nodeCount.trim();
+      if (trimmedNodes) {
+        formData.append("node_count", trimmedNodes);
+      }
+
+      const trimmedWalltime = walltimeHours.trim();
+      if (trimmedWalltime) {
+        formData.append("walltime_hours", trimmedWalltime);
+      }
+
+      // 使用旧的 createTask 接口提交任务
+      const confirmData = await createTask(formData);
+
+      setUploadProgress(100);
+      setUploadStep("🎉 完成！");
+
+      // 更新历史记录为成功
+      const uploadId = currentUploadIdRef.current;
+      if (uploadId) {
+        setUploadHistory((prev) =>
+          prev.map((item) =>
+            item.id === uploadId
+              ? { ...item, status: "success" as const, progress: 100, taskId: confirmData.task_id }
+              : item
+          )
+        );
+        console.log(`✅ [Direct] 上传历史已更新为成功，任务ID: ${confirmData.task_id}, 上传ID: ${uploadId}`);
+      }
+
+      setSubmitInfo({
+        taskId: confirmData.task_id,
+        status: confirmData.status,
+        message: confirmData.message ?? null,
+      });
+
+      // 3秒后自动隐藏成功提示
+      setTimeout(() => {
+        setSubmitInfo(null);
+      }, 3000);
+
+      resetForm();
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("speos-task-created", {
+            detail: { taskId: confirmData.task_id },
+          })
+        );
+      }
+    } catch (error) {
+      console.error("[Direct] 断点续传上传失败", error);
+      throw error;
+    } finally {
+      setIsResumableUpload(false);
+      setTotalChunks(0);
+      setUploadedChunks(0);
+      setCurrentChunk(0);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     
@@ -535,7 +804,20 @@ export default function UploadForm() {
       if (uploadMode === "direct") {
         // Direct 模式：直接上传到服务器（内网直连）
         console.log("📡 使用 Direct 模式上传（内网直连）");
-        await handleDirectUpload(masterFile, includeArchive);
+        
+        // 文件大小阈值：10MB
+        const DIRECT_RESUMABLE_THRESHOLD = 10 * 1024 * 1024;
+        
+        // 判断是否使用断点续传
+        if (totalSize >= DIRECT_RESUMABLE_THRESHOLD) {
+          // >=10MB：使用断点续传
+          console.log(`📦 文件较大 (${formatFileSize(totalSize)})，使用 Direct 模式断点续传`);
+          await handleDirectResumableUpload(masterFile, includeArchive);
+        } else {
+          // <10MB：使用普通上传（更快）
+          console.log(`🚀 文件较小 (${formatFileSize(totalSize)})，使用 Direct 模式普通上传`);
+          await handleDirectUpload(masterFile, includeArchive);
+        }
       } else {
         // TOS 模式：上传到对象存储
         console.log("📡 使用 TOS 模式上传（对象存储）");
@@ -1127,7 +1409,7 @@ export default function UploadForm() {
                 uploadMode === "direct" ? "text-green-700" : "text-blue-700"
               }`}>
                 {uploadMode === "direct" 
-                  ? "文件将直接上传到服务器，速度更快（适用于内网环境）" 
+                  ? "文件将直接上传到服务器，速度更快，大文件支持断点续传（适用于内网环境）" 
                   : "文件将上传到对象存储，支持断点续传（适用于公网环境）"}
               </p>
             </div>
@@ -1184,6 +1466,13 @@ export default function UploadForm() {
                       <span className="text-blue-600">
                         ({upload.fileType})
                       </span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        upload.uploadMode === "direct" 
+                          ? "bg-green-100 text-green-700" 
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {upload.uploadMode === "direct" ? "Direct" : "TOS"}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-blue-700">
@@ -1192,10 +1481,12 @@ export default function UploadForm() {
                       <button
                         onClick={() => {
                           if (typeof window !== "undefined") {
-                            const key = `resumable_upload_${upload.taskId}_${upload.fileType}`;
+                            // 根据模式清除不同的 localStorage key
+                            const keyPrefix = upload.uploadMode === "direct" ? "direct_upload" : "resumable_upload";
+                            const key = `${keyPrefix}_${upload.taskId}_${upload.fileType}`;
                             localStorage.removeItem(key);
                             setPendingUploads((prev) =>
-                              prev.filter((u) => u.taskId !== upload.taskId)
+                              prev.filter((u) => !(u.taskId === upload.taskId && u.uploadMode === upload.uploadMode))
                             );
                           }
                         }}

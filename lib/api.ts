@@ -784,3 +784,269 @@ export function clearUploadProgress(task_id: string, file_type: "master" | "incl
     console.warn("清除上传进度失败", error);
   }
 }
+
+// ============= Direct 模式断点续传接口 =============
+
+/**
+ * Direct 模式：初始化分片上传
+ * 与 TOS 模式不同，Direct 模式直接上传到后端服务器
+ */
+export interface DirectMultipartInitRequest {
+  filename: string;
+  file_size: number;
+  file_type: "master" | "include";
+  chunk_size?: number;
+}
+
+export interface DirectMultipartInitResponse {
+  task_id: string;
+  upload_id: string;
+  total_chunks: number;
+  parts: Array<{
+    part_number: number;
+    start_byte: number;
+    end_byte: number;
+    size: number;
+  }>;
+}
+
+export async function initDirectMultipartUpload(data: DirectMultipartInitRequest) {
+  // 使用直接的后端地址，不通过 Next.js 代理
+  const directBackendUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : 'http://localhost:8000';
+    
+  const res = await fetch(`${directBackendUrl}/api/upload/direct/multipart/init`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const errorData = JSON.parse(text);
+      const detail = errorData?.detail || errorData?.message;
+      throw new Error(detail || text || res.statusText);
+    } catch (err) {
+      if (err instanceof Error) throw err;
+      throw new Error(text || res.statusText);
+    }
+  }
+
+  return JSON.parse(text) as DirectMultipartInitResponse;
+}
+
+/**
+ * Direct 模式：上传单个分片
+ * 注意：Direct 模式使用 FormData，而不是直接 PUT Blob
+ */
+export async function uploadDirectPart(
+  taskId: string,
+  uploadId: string,
+  partNumber: number,
+  chunk: Blob,
+  onProgress?: (loaded: number, total: number) => void,
+  abortSignal?: AbortSignal
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        reject(new Error("上传已取消"));
+        return;
+      }
+      
+      abortSignal.addEventListener("abort", () => {
+        xhr.abort();
+        reject(new Error("上传已取消"));
+      });
+    }
+
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(e.loaded, e.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status === 200 || xhr.status === 201) {
+        resolve();
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          const errorMessage = errorData?.detail || errorData?.message || xhr.statusText;
+          reject(new Error(`分片上传失败: ${errorMessage}`));
+        } catch {
+          reject(new Error(`分片上传失败: ${xhr.status} ${xhr.statusText}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("网络错误，分片上传失败"));
+    xhr.ontimeout = () => reject(new Error("分片上传超时"));
+    xhr.onabort = () => reject(new Error("分片上传已取消"));
+
+    // Direct 模式使用 FormData
+    const formData = new FormData();
+    formData.append("task_id", taskId);
+    formData.append("upload_id", uploadId);
+    formData.append("part_number", partNumber.toString());
+    formData.append("file", chunk);
+
+    // 使用直接的后端地址
+    const directBackendUrl = typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:8000`
+      : 'http://localhost:8000';
+
+    xhr.open("POST", `${directBackendUrl}/api/upload/direct/multipart/part`);
+    xhr.timeout = 5 * 60 * 1000; // 5分钟超时
+    xhr.send(formData);
+  });
+}
+
+/**
+ * Direct 模式：查询已上传的分片（断点续传）
+ */
+export interface DirectListUploadedPartsRequest {
+  task_id: string;
+  upload_id: string;
+}
+
+export interface DirectListUploadedPartsResponse {
+  parts: number[]; // 已上传的分片编号列表
+}
+
+export async function listDirectUploadedParts(data: DirectListUploadedPartsRequest) {
+  const directBackendUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : 'http://localhost:8000';
+
+  const res = await fetch(`${directBackendUrl}/api/upload/direct/multipart/list`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const errorData = JSON.parse(text);
+      const detail = errorData?.detail || errorData?.message;
+      throw new Error(detail || text || res.statusText);
+    } catch (err) {
+      if (err instanceof Error) throw err;
+      throw new Error(text || res.statusText);
+    }
+  }
+
+  return JSON.parse(text) as DirectListUploadedPartsResponse;
+}
+
+/**
+ * Direct 模式：完成分片上传
+ */
+export interface DirectCompleteMultipartRequest {
+  task_id: string;
+  upload_id: string;
+  filename: string;
+  file_type: "master" | "include";
+  parts: Array<{ part_number: number }>;
+}
+
+export interface DirectCompleteMultipartResponse {
+  message: string;
+  file_path: string;
+}
+
+export async function completeDirectMultipartUpload(data: DirectCompleteMultipartRequest) {
+  const directBackendUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : 'http://localhost:8000';
+
+  const res = await fetch(`${directBackendUrl}/api/upload/direct/multipart/complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const errorData = JSON.parse(text);
+      const detail = errorData?.detail || errorData?.message;
+      throw new Error(detail || text || res.statusText);
+    } catch (err) {
+      if (err instanceof Error) throw err;
+      throw new Error(text || res.statusText);
+    }
+  }
+
+  return JSON.parse(text) as DirectCompleteMultipartResponse;
+}
+
+// ============= Direct 模式断点续传进度管理 =============
+
+export interface DirectResumableUploadProgress {
+  task_id: string;
+  upload_id: string;
+  file_type: "master" | "include";
+  filename: string;
+  file_size: number;
+  total_chunks: number;
+  uploaded_parts: number[]; // Direct 模式只需要保存分片编号
+  timestamp: number;
+}
+
+// 保存 Direct 模式上传进度
+export function saveDirectUploadProgress(progress: DirectResumableUploadProgress): void {
+  if (typeof window === "undefined") return;
+  
+  try {
+    const key = `direct_upload_${progress.task_id}_${progress.file_type}`;
+    localStorage.setItem(key, JSON.stringify(progress));
+    console.log(`✅ [Direct] 保存上传进度: ${progress.filename}, 已上传 ${progress.uploaded_parts.length}/${progress.total_chunks} 片`);
+  } catch (error) {
+    console.warn("[Direct] 保存上传进度失败", error);
+  }
+}
+
+// 加载 Direct 模式上传进度
+export function loadDirectUploadProgress(task_id: string, file_type: "master" | "include"): DirectResumableUploadProgress | null {
+  if (typeof window === "undefined") return null;
+  
+  try {
+    const key = `direct_upload_${task_id}_${file_type}`;
+    const data = localStorage.getItem(key);
+    if (!data) return null;
+    
+    const progress = JSON.parse(data) as DirectResumableUploadProgress;
+    console.log(`📥 [Direct] 加载上传进度: ${progress.filename}, 已上传 ${progress.uploaded_parts.length}/${progress.total_chunks} 片`);
+    return progress;
+  } catch (error) {
+    console.warn("[Direct] 加载上传进度失败", error);
+    return null;
+  }
+}
+
+// 清除 Direct 模式上传进度
+export function clearDirectUploadProgress(task_id: string, file_type: "master" | "include"): void {
+  if (typeof window === "undefined") return;
+  
+  try {
+    const key = `direct_upload_${task_id}_${file_type}`;
+    localStorage.removeItem(key);
+    console.log(`🗑️ [Direct] 清除上传进度: ${task_id} (${file_type})`);
+  } catch (error) {
+    console.warn("[Direct] 清除上传进度失败", error);
+  }
+}
