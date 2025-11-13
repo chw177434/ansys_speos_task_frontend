@@ -1161,15 +1161,15 @@ export default function TasksTable() {
 
       <div className="mt-4 flex-1 overflow-hidden">
         <div className="h-full overflow-x-auto overflow-y-auto rounded-lg border">
-          <table className="min-w-full table-fixed text-sm">
-            <thead className="bg-gray-100 text-gray-600">
+          <table className="min-w-max w-full text-sm">
+            <thead className="bg-gray-100 text-gray-600 sticky top-0">
               <tr>
-                <th className="w-56 px-3 py-2 text-left">任务名称</th>
-                <th className="w-56 px-3 py-2 text-left">Task ID</th>
-                <th className="w-36 px-3 py-2">状态</th>
-                <th className="w-40 px-3 py-2">执行时长</th>
-                <th className="w-44 px-3 py-2">提交时间</th>
-                <th className="px-3 py-2 text-left">结果文件</th>
+                <th className="min-w-[200px] px-3 py-2 text-left whitespace-nowrap">任务名称</th>
+                <th className="min-w-[280px] px-3 py-2 text-left whitespace-nowrap">Task ID</th>
+                <th className="min-w-[240px] px-3 py-2 whitespace-nowrap">状态</th>
+                <th className="min-w-[120px] px-3 py-2 whitespace-nowrap">执行时长</th>
+                <th className="min-w-[180px] px-3 py-2 whitespace-nowrap">提交时间</th>
+                <th className="min-w-[400px] px-3 py-2 text-left whitespace-nowrap">结果文件 / 操作</th>
               </tr>
             </thead>
             <tbody className="align-top">{renderBody()}</tbody>
