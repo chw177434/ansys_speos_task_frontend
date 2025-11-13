@@ -318,6 +318,9 @@ export default function UploadForm() {
     if (typeof window === "undefined") return;
 
     const checkPendingUploads = () => {
+      console.log("🔍 [调试] 开始检测未完成的上传...");
+      console.log("🔍 [调试] localStorage 中的所有 keys:", Object.keys(localStorage));
+      
       const pending: Array<{
         taskId: string;
         filename: string;
@@ -330,9 +333,12 @@ export default function UploadForm() {
       Object.keys(localStorage).forEach((key) => {
         // TOS 模式的上传
         if (key.startsWith("resumable_upload_")) {
+          console.log("🔍 [调试] 发现 TOS 模式上传记录:", key);
           try {
             const data = JSON.parse(localStorage.getItem(key) || "{}");
+            console.log("🔍 [调试] TOS 数据:", data);
             if (data.uploaded_parts && data.uploaded_parts.length < data.total_chunks) {
+              console.log("✅ [调试] 添加 TOS 上传到待恢复列表");
               pending.push({
                 taskId: data.task_id,
                 filename: data.filename,
@@ -341,6 +347,8 @@ export default function UploadForm() {
                 fileType: data.file_type,
                 uploadMode: "tos",
               });
+            } else {
+              console.log("❌ [调试] TOS 上传已完成或数据不完整");
             }
           } catch (error) {
             console.warn("解析TOS上传进度失败", error);
@@ -349,9 +357,12 @@ export default function UploadForm() {
         
         // Direct 模式的上传
         if (key.startsWith("direct_upload_")) {
+          console.log("🔍 [调试] 发现 Direct 模式上传记录:", key);
           try {
             const data = JSON.parse(localStorage.getItem(key) || "{}");
+            console.log("🔍 [调试] Direct 数据:", data);
             if (data.uploaded_parts && data.uploaded_parts.length < data.total_chunks) {
+              console.log("✅ [调试] 添加 Direct 上传到待恢复列表");
               pending.push({
                 taskId: data.task_id,
                 filename: data.filename,
@@ -360,6 +371,8 @@ export default function UploadForm() {
                 fileType: data.file_type,
                 uploadMode: "direct",
               });
+            } else {
+              console.log("❌ [调试] Direct 上传已完成或数据不完整");
             }
           } catch (error) {
             console.warn("解析Direct上传进度失败", error);
@@ -367,6 +380,8 @@ export default function UploadForm() {
         }
       });
 
+      console.log("📊 [调试] 检测完成，发现未完成的上传:", pending.length, "个");
+      console.log("📊 [调试] 详细列表:", pending);
       setPendingUploads(pending);
     };
 
