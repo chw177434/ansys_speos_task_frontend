@@ -45,9 +45,13 @@ export interface CreateTaskResponse {
 
 // SPEOS 任务执行进度信息（后端实时捕获）
 export interface ProgressInfo {
-  estimated_time?: string | null;      // 预期执行时间，如 "2.5 hours"
-  progress_percent?: number | null;    // 进度百分比，0-100
-  current_step?: string | null;        // 当前步骤，如 "10/10"
+  estimated_time?: string | null;      // ⏱️ 剩余时间，如 "20 minutes"
+  progress_percent?: number | null;    // 📊 总体进度百分比，0-100
+  current_step?: string | null;        // 当前步骤，如 "10/10"（旧版兼容）
+  current_pass?: number | null;        // 🔄 当前 Pass
+  total_passes?: number | null;        // 🔄 总 Pass 数
+  current_sensor?: number | null;      // 📡 当前 Sensor
+  total_sensors?: number | null;       // 📡 总 Sensor 数
 }
 
 export interface TaskStatusResponse {

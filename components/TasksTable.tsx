@@ -275,56 +275,98 @@ function formatProgressPercent(percent: number | null | undefined): string {
   return `${Math.round(percent)}%`;
 }
 
-// 渲染进度信息组件（美化显示）
+// 渲染进度信息组件（优雅显示）
 function renderProgressInfo(progressInfo: ProgressInfo | null | undefined): JSX.Element | null {
   if (!progressInfo) return null;
 
-  const { estimated_time, progress_percent, current_step } = progressInfo;
+  const { 
+    estimated_time, 
+    progress_percent, 
+    current_step,
+    current_pass,
+    total_passes,
+    current_sensor,
+    total_sensors
+  } = progressInfo;
   
   // 检查是否有任何有效的进度信息
   const hasEstimatedTime = estimated_time && estimated_time.trim() !== "";
   const hasProgressPercent = progress_percent != null && Number.isFinite(progress_percent);
   const hasCurrentStep = current_step && current_step.trim() !== "";
+  const hasPassInfo = current_pass != null && total_passes != null;
+  const hasSensorInfo = current_sensor != null && total_sensors != null;
   
-  if (!hasEstimatedTime && !hasProgressPercent && !hasCurrentStep) {
+  if (!hasEstimatedTime && !hasProgressPercent && !hasCurrentStep && !hasPassInfo && !hasSensorInfo) {
     return null;
   }
 
   return (
-    <div className="mt-2 space-y-1 rounded-md bg-blue-50 px-2 py-1.5 text-xs">
-      {/* 进度百分比 */}
+    <div className="mt-2 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-3 py-2 shadow-sm">
+      {/* 主进度条 - 大而醒目 */}
       {hasProgressPercent && (
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-blue-700 font-medium">执行进度:</span>
-          <div className="flex items-center gap-2 flex-1">
-            <div className="flex-1 h-1.5 bg-blue-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-600 transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.max(0, progress_percent!))}%` }}
-              />
-            </div>
-            <span className="text-blue-800 font-semibold min-w-[3rem] text-right">
+        <div className="mb-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-blue-900">📊 执行进度</span>
+            <span className="text-sm font-bold text-blue-700">
               {formatProgressPercent(progress_percent)}
             </span>
+          </div>
+          <div className="h-2 bg-blue-200 rounded-full overflow-hidden shadow-inner">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${Math.min(100, Math.max(0, progress_percent!))}%` }}
+            />
           </div>
         </div>
       )}
       
-      {/* 当前步骤 */}
-      {hasCurrentStep && (
-        <div className="flex items-center justify-between">
-          <span className="text-blue-700 font-medium">当前步骤:</span>
-          <span className="text-blue-800 font-mono">{current_step}</span>
-        </div>
-      )}
-      
-      {/* 预期时间 */}
-      {hasEstimatedTime && (
-        <div className="flex items-center justify-between">
-          <span className="text-blue-700 font-medium">预计时间:</span>
-          <span className="text-blue-800">{estimated_time}</span>
-        </div>
-      )}
+      {/* 详细信息区域 */}
+      <div className="space-y-1.5">
+        {/* 剩余时间 - 突出显示 */}
+        {hasEstimatedTime && (
+          <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+            <span className="text-xs text-blue-700">⏱️</span>
+            <span className="text-xs text-blue-600 font-medium">剩余时间:</span>
+            <span className="text-xs text-blue-900 font-semibold ml-auto">{estimated_time}</span>
+          </div>
+        )}
+        
+        {/* Pass 和 Sensor 信息 - 并排显示 */}
+        {(hasPassInfo || hasSensorInfo) && (
+          <div className="flex items-center gap-2">
+            {/* Pass 信息 */}
+            {hasPassInfo && (
+              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-2 py-1 flex-1">
+                <span className="text-xs">🔄</span>
+                <span className="text-xs text-blue-600 font-medium">Pass:</span>
+                <span className="text-xs text-blue-900 font-semibold ml-auto">
+                  {current_pass}/{total_passes}
+                </span>
+              </div>
+            )}
+            
+            {/* Sensor 信息 */}
+            {hasSensorInfo && (
+              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-2 py-1 flex-1">
+                <span className="text-xs">📡</span>
+                <span className="text-xs text-blue-600 font-medium">Sensor:</span>
+                <span className="text-xs text-blue-900 font-semibold ml-auto">
+                  {current_sensor}/{total_sensors}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* 旧版兼容：当前步骤 */}
+        {hasCurrentStep && !hasPassInfo && !hasSensorInfo && (
+          <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+            <span className="text-xs text-blue-700">📍</span>
+            <span className="text-xs text-blue-600 font-medium">当前步骤:</span>
+            <span className="text-xs text-blue-900 font-semibold font-mono ml-auto">{current_step}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
