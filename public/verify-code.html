@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>前端代码验证工具</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #1e40af;
+      margin-top: 0;
+    }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+    }
+    .success {
+      background: #f0fdf4;
+      border-left-color: #22c55e;
+    }
+    .error {
+      background: #fef2f2;
+      border-left-color: #ef4444;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .result {
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .icon {
+      font-size: 20px;
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 前端代码更新验证工具</h1>
+    <p>使用此工具快速验证前端代码是否已生效</p>
+
+    <div class="section">
+      <h3><span class="icon">🚀</span>步骤 1: 检查 Network 请求</h3>
+      <p>点击按钮后刷新主页面，检查是否有 /detail 请求</p>
+      <button onclick="checkDetailRequests()">检查 Detail 请求</button>
+      <div id="result1" class="result"></div>
+    </div>
+
+    <div class="section">
+      <h3><span class="icon">📡</span>步骤 2: 测试 API 调用</h3>
+      <p>手动调用一个运行中任务的 detail 接口</p>
+      <input type="text" id="taskId" placeholder="输入任务 ID" style="width: 400px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+      <button onclick="testDetailApi()">测试 Detail API</button>
+      <div id="result2" class="result"></div>
+    </div>
+
+    <div class="section">
+      <h3><span class="icon">🔎</span>步骤 3: 检查 DOM 结构</h3>
+      <p>检查页面中是否有进度信息的 DOM 元素</p>
+      <button onclick="checkProgressCards()">检查进度卡片</button>
+      <div id="result3" class="result"></div>
+    </div>
+
+    <div class="section">
+      <h3><span class="icon">📊</span>步骤 4: 查看所有任务状态</h3>
+      <p>获取任务列表并检查 progress_info 字段</p>
+      <button onclick="checkTaskList()">检查任务列表</button>
+      <div id="result4" class="result"></div>
+    </div>
+
+    <div class="section">
+      <h3><span class="icon">🎯</span>完整诊断</h3>
+      <p>运行所有检查，生成完整报告</p>
+      <button onclick="runFullDiagnostic()">运行完整诊断</button>
+      <div id="resultFull" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    function checkDetailRequests() {
+      const result = document.getElementById('result1');
+      result.innerHTML = '<p style="color: #3b82f6;">正在检查...</p>';
+      
+      setTimeout(() => {
+        const resources = performance.getEntriesByType('resource');
+        const detailRequests = resources.filter(r => r.name.includes('/detail'));
+        
+        let html = '<pre>';
+        html += '=== Network 请求分析 ===\n\n';
+        html += `总请求数: ${resources.length}\n`;
+        html += `包含 /detail 的请求: ${detailRequests.length}\n\n`;
+        
+        if (detailRequests.length > 0) {
+          html += '✅ 找到 /detail 请求：\n\n';
+          detailRequests.forEach((r, i) => {
+            html += `${i + 1}. ${r.name}\n`;
+            html += `   耗时: ${r.duration.toFixed(2)}ms\n\n`;
+          });
+          html += '\n✅ 代码已生效！';
+        } else {
+          html += '❌ 没有找到 /detail 请求\n\n';
+          html += '可能原因：\n';
+          html += '1. 没有运行中的任务（PROGRESS/RUNNING/STARTED）\n';
+          html += '2. 代码还没生效，需要硬刷新（Ctrl+Shift+R）\n';
+          html += '3. 浏览器缓存，请在 Network 选项卡勾选 Disable cache\n';
+        }
+        html += '</pre>';
+        
+        result.innerHTML = html;
+      }, 100);
+    }
+
+    async function testDetailApi() {
+      const result = document.getElementById('result2');
+      const taskId = document.getElementById('taskId').value.trim();
+      
+      if (!taskId) {
+        result.innerHTML = '<p style="color: #ef4444;">请输入任务 ID</p>';
+        return;
+      }
+      
+      result.innerHTML = '<p style="color: #3b82f6;">正在请求...</p>';
+      
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/detail`);
+        const data = await response.json();
+        
+        let html = '<pre>';
+        html += '=== Detail API 响应 ===\n\n';
+        html += `Task ID: ${data.task_id}\n`;
+        html += `Status: ${data.status}\n`;
+        html += `Elapsed: ${data.elapsed_seconds?.toFixed(1) || 'N/A'} 秒\n\n`;
+        
+        if (data.progress_info) {
+          html += '✅ Progress Info 存在：\n\n';
+          html += JSON.stringify(data.progress_info, null, 2);
+        } else {
+          html += '❌ Progress Info 为 null\n';
+          html += '说明后端还没有捕获到进度信息';
+        }
+        html += '</pre>';
+        
+        result.innerHTML = html;
+      } catch (error) {
+        result.innerHTML = `<pre style="color: #ef4444;">❌ 请求失败：${error.message}</pre>`;
+      }
+    }
+
+    function checkProgressCards() {
+      const result = document.getElementById('result3');
+      result.innerHTML = '<p style="color: #3b82f6;">正在检查...</p>';
+      
+      setTimeout(() => {
+        // 检查多种可能的进度卡片特征
+        const selectors = [
+          '[class*="from-blue-50"]',
+          '[class*="to-indigo-50"]',
+          '.bg-gradient-to-br',
+          'div:has(.text-blue-900):has(.font-semibold)'
+        ];
+        
+        let found = false;
+        let html = '<pre>';
+        html += '=== DOM 结构检查 ===\n\n';
+        
+        selectors.forEach(selector => {
+          try {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+              html += `✅ 找到 ${elements.length} 个元素: ${selector}\n`;
+              found = true;
+            }
+          } catch (e) {
+            // 某些选择器可能不支持
+          }
+        });
+        
+        if (found) {
+          html += '\n✅ 找到了进度相关的 DOM 元素！\n';
+          html += '如果界面上看不到，可能是 CSS 问题';
+        } else {
+          html += '❌ 没有找到进度相关的 DOM 元素\n\n';
+          html += '可能原因：\n';
+          html += '1. 没有 progress_info 数据\n';
+          html += '2. 渲染函数没有被调用\n';
+          html += '3. 代码还没生效';
+        }
+        html += '</pre>';
+        
+        result.innerHTML = html;
+      }, 100);
+    }
+
+    async function checkTaskList() {
+      const result = document.getElementById('result4');
+      result.innerHTML = '<p style="color: #3b82f6;">正在获取任务列表...</p>';
+      
+      try {
+        const response = await fetch('/api/tasks');
+        const data = await response.json();
+        
+        const items = Array.isArray(data) ? data : data.items || [];
+        const runningTasks = items.filter(t => 
+          ['RUNNING', 'PROGRESS', 'STARTED'].includes(t.status)
+        );
+        
+        let html = '<pre>';
+        html += '=== 任务列表分析 ===\n\n';
+        html += `总任务数: ${items.length}\n`;
+        html += `运行中任务: ${runningTasks.length}\n\n`;
+        
+        if (runningTasks.length > 0) {
+          html += '运行中的任务：\n\n';
+          runningTasks.forEach((task, i) => {
+            html += `${i + 1}. ${task.task_id}\n`;
+            html += `   状态: ${task.status}\n`;
+            html += `   任务名: ${task.job_name || 'N/A'}\n`;
+            html += `   progress_info: ${task.progress_info ? '✅ 存在' : '❌ null/不存在'}\n`;
+            
+            if (task.progress_info) {
+              html += `   └─ 数据: ${JSON.stringify(task.progress_info)}\n`;
+            }
+            html += '\n';
+          });
+          
+          // 检查列表接口是否返回了 progress_info
+          const hasProgressInList = runningTasks.some(t => t.progress_info);
+          if (hasProgressInList) {
+            html += '\n✅ 列表接口已包含 progress_info！\n';
+            html += '前端应该能直接显示，无需额外请求。\n';
+          } else {
+            html += '\n⚠️  列表接口不包含 progress_info\n';
+            html += '前端需要额外调用 detail 接口获取。\n';
+          }
+        } else {
+          html += '⚠️  当前没有运行中的任务\n';
+          html += '提交一个新任务来测试功能';
+        }
+        
+        html += '</pre>';
+        result.innerHTML = html;
+      } catch (error) {
+        result.innerHTML = `<pre style="color: #ef4444;">❌ 请求失败：${error.message}</pre>`;
+      }
+    }
+
+    async function runFullDiagnostic() {
+      const result = document.getElementById('resultFull');
+      result.innerHTML = '<p style="color: #3b82f6;">正在运行完整诊断...</p>';
+      
+      let html = '<pre>';
+      html += '========================================\n';
+      html += '       前端代码更新完整诊断报告\n';
+      html += '========================================\n\n';
+      
+      // 1. 检查 Network 请求
+      html += '1️⃣ Network 请求检查\n';
+      html += '─────────────────────────\n';
+      const resources = performance.getEntriesByType('resource');
+      const detailRequests = resources.filter(r => r.name.includes('/detail'));
+      const outputRequests = resources.filter(r => r.name.includes('/outputs'));
+      
+      html += `总请求数: ${resources.length}\n`;
+      html += `Detail 请求: ${detailRequests.length}\n`;
+      html += `Output 请求: ${outputRequests.length}\n`;
+      
+      if (detailRequests.length > 0) {
+        html += '\n✅ 找到 Detail 请求（代码已生效）\n';
+        detailRequests.forEach(r => {
+          html += `   ${r.name}\n`;
+        });
+      } else {
+        html += '\n❌ 没有 Detail 请求（代码未生效或无运行中任务）\n';
+      }
+      html += '\n';
+      
+      // 2. 检查任务列表
+      html += '2️⃣ 任务列表检查\n';
+      html += '─────────────────────────\n';
+      
+      try {
+        const response = await fetch('/api/tasks');
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : data.items || [];
+        const runningTasks = items.filter(t => 
+          ['RUNNING', 'PROGRESS', 'STARTED'].includes(t.status)
+        );
+        
+        html += `总任务数: ${items.length}\n`;
+        html += `运行中任务: ${runningTasks.length}\n\n`;
+        
+        if (runningTasks.length > 0) {
+          runningTasks.forEach((task, i) => {
+            html += `任务 ${i + 1}:\n`;
+            html += `  ID: ${task.task_id}\n`;
+            html += `  状态: ${task.status}\n`;
+            html += `  progress_info: ${task.progress_info ? '✅ 存在' : '❌ null'}\n\n`;
+          });
+        } else {
+          html += '⚠️  没有运行中的任务\n\n';
+        }
+      } catch (error) {
+        html += `❌ 获取任务列表失败: ${error.message}\n\n`;
+      }
+      
+      // 3. 检查 DOM
+      html += '3️⃣ DOM 结构检查\n';
+      html += '─────────────────────────\n';
+      const progressCards = document.querySelectorAll('[class*="from-blue-50"]');
+      html += `进度卡片数量: ${progressCards.length}\n`;
+      
+      if (progressCards.length > 0) {
+        html += '✅ 找到进度卡片 DOM 元素\n';
+        progressCards.forEach((card, i) => {
+          const visible = card.offsetParent !== null;
+          html += `  卡片 ${i + 1}: ${visible ? '✅ 可见' : '❌ 隐藏'}\n`;
+        });
+      } else {
+        html += '❌ 没有找到进度卡片 DOM 元素\n';
+      }
+      html += '\n';
+      
+      // 4. 总结
+      html += '========================================\n';
+      html += '            诊断结果\n';
+      html += '========================================\n\n';
+      
+      const codeWorking = detailRequests.length > 0;
+      const hasRunningTasks = runningTasks && runningTasks.length > 0;
+      const hasDom = progressCards.length > 0;
+      
+      if (codeWorking && hasDom) {
+        html += '✅ 代码已生效，进度信息应该可见\n';
+        html += '\n如果界面上看不到，请检查：\n';
+        html += '- 滚动页面到正确位置\n';
+        html += '- 任务状态是否真的是运行中\n';
+        html += '- progress_info 是否有数据\n';
+      } else if (!codeWorking) {
+        html += '❌ 代码还没生效！\n\n';
+        html += '请执行：\n';
+        html += '1. 在服务器上：./cleanup-and-restart.sh\n';
+        html += '2. 在浏览器中：按 Ctrl+Shift+R 硬刷新\n';
+        html += '3. Network 选项卡：勾选 Disable cache\n';
+      } else if (!hasRunningTasks) {
+        html += '⚠️  代码可能已生效，但没有运行中的任务\n\n';
+        html += '请提交一个新任务来测试进度显示功能\n';
+      } else {
+        html += '⚠️  部分功能正常，需要进一步排查\n';
+      }
+      
+      html += '</pre>';
+      result.innerHTML = html;
+    }
+
+    // 页面加载时的提示
+    window.addEventListener('load', () => {
+      console.log('%c🔍 前端代码验证工具已加载', 'color: #3b82f6; font-size: 16px; font-weight: bold;');
+      console.log('请使用页面上的按钮进行诊断，或直接运行 runFullDiagnostic()');
+    });
+  </script>
+</body>
+</html>
+

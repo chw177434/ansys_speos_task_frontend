@@ -55,7 +55,10 @@ echo ""
 # 4. 清理 Next.js 缓存
 echo -e "${CYAN}4. 清理 Next.js 缓存...${NC}"
 rm -rf .next
-echo -e "${GREEN}✓ .next 缓存已清理${NC}"
+rm -rf node_modules/.cache  # 清理 node_modules 缓存
+rm -rf .next/cache          # 清理 Next.js 构建缓存
+rm -rf out                  # 清理输出目录（如果有）
+echo -e "${GREEN}✓ .next 和相关缓存已清理${NC}"
 echo ""
 
 # 5. 清理 node_modules（可选）
@@ -107,10 +110,30 @@ sleep 3
 ./server-status.sh
 
 echo ""
+echo -e "${YELLOW}⚠️  重要提示：浏览器端操作${NC}"
+echo "========================================="
+echo -e "${CYAN}请在浏览器中执行以下步骤：${NC}"
+echo ""
+echo "  1. 按 F12 打开开发者工具"
+echo "  2. 切换到 Network 选项卡"
+echo "  3. ✅ 勾选 'Disable cache'"
+echo "  4. 按 Ctrl+Shift+R 硬刷新页面"
+echo ""
+echo -e "${CYAN}或者右键点击刷新按钮：${NC}"
+echo "  选择 '清空缓存并硬性重新加载'"
+echo ""
+echo "========================================="
+echo ""
 echo -e "${CYAN}实时查看日志：${NC}"
 echo "  ./view-logs.sh -f"
 echo ""
 echo -e "${CYAN}访问地址：${NC}"
 echo "  http://localhost:3000"
 echo "  http://$(hostname -I | awk '{print $1}'):3000"
+echo ""
+echo -e "${YELLOW}验证代码是否生效：${NC}"
+echo "  在浏览器 Console 中运行："
+echo "  performance.getEntriesByType('resource').some(r => r.name.includes('/detail'))"
+echo "  应该返回 true（对于运行中的任务）"
+echo ""
 

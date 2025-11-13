@@ -637,6 +637,31 @@ export default function TasksTable() {
     [applyTaskUpdate]
   );
 
+  // ✅ 新增：获取运行中任务的详细进度信息
+  const fetchProgressForTask = useCallback(
+    async (taskId: string) => {
+      try {
+        // 调用 detail 接口获取完整的任务信息（包括 progress_info）
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/detail`);
+        if (!response.ok) {
+          console.warn(`Failed to fetch progress for task ${taskId}`);
+          return;
+        }
+
+        const data = await response.json();
+        
+        // 更新任务的 progress_info
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          progress_info: data.progress_info || null,
+        }));
+      } catch (err) {
+        console.warn(`Error fetching progress for task ${taskId}:`, err);
+      }
+    },
+    [applyTaskUpdate]
+  );
+
   const fetchTasks = useCallback(
     async (targetPage: number, targetSize: number) => {
       setLoading(true);
@@ -755,11 +780,19 @@ export default function TasksTable() {
 
   useEffect(() => {
     baseRows.forEach((task) => {
+      // 获取成功任务的输出文件
       if (task.status === "SUCCESS" && !task.outputsFetched && !task.outputsLoading) {
         void fetchOutputsForTask(task.task_id);
       }
+      
+      // ✅ 新增：获取运行中任务的进度信息
+      // 只对运行中的任务调用 detail 接口
+      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+      if (runningStatuses.includes(task.status)) {
+        void fetchProgressForTask(task.task_id);
+      }
     });
-  }, [baseRows, fetchOutputsForTask]);
+  }, [baseRows, fetchOutputsForTask, fetchProgressForTask]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
