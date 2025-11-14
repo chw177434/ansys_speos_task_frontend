@@ -260,8 +260,14 @@ export class DirectResumableUploadManager {
       if (this.uploadedParts.length > 0) {
         console.log(`[Direct] 📊 服务器记录显示已上传 ${this.uploadedParts.length} 片，跳过这些分片`);
         
-        // 计算已上传的字节数
-        this.uploadedBytes = this.uploadedParts.length * CHUNK_SIZE;
+        // 计算已上传的字节数（根据实际的 parts 信息计算，考虑最后一个分片可能小于 CHUNK_SIZE）
+        this.uploadedBytes = 0;
+        const uploadedPartNumbers = new Set(this.uploadedParts);
+        for (const part of this.allParts) {
+          if (uploadedPartNumbers.has(part.part_number)) {
+            this.uploadedBytes += part.size;
+          }
+        }
       }
     } catch (error) {
       console.warn("[Direct] 查询已上传分片失败，将从头开始上传", error);

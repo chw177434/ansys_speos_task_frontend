@@ -838,13 +838,18 @@ export interface DirectMultipartInitRequest {
   filename: string;
   file_size: number;
   file_type: "master" | "include";
+  content_type?: string;  // 可选：文件内容类型（如 "application/octet-stream"）
   chunk_size?: number;
   task_id?: string;  // 可选：如果提供，使用指定的 task_id（用于 include 文件与 master 文件使用相同的 task_id）
+  job_name?: string;  // 可选：任务名称
+  submitter?: string;  // 可选：提交者
 }
 
 export interface DirectMultipartInitResponse {
   task_id: string;
   upload_id: string;
+  filename?: string;  // 响应中的文件名（与请求一致）
+  chunk_size?: number;  // 响应中的分片大小（与请求一致）
   total_chunks: number;
   parts: Array<{
     part_number: number;
@@ -852,6 +857,7 @@ export interface DirectMultipartInitResponse {
     end_byte: number;
     size: number;
   }>;
+  message?: string;  // 响应消息
 }
 
 export async function initDirectMultipartUpload(data: DirectMultipartInitRequest) {
@@ -963,7 +969,10 @@ export interface DirectListUploadedPartsRequest {
 }
 
 export interface DirectListUploadedPartsResponse {
-  parts: number[]; // 已上传的分片编号列表
+  task_id?: string;  // 任务ID（与请求一致）
+  upload_id?: string;  // 上传ID（与请求一致）
+  parts: number[]; // 已上传的分片编号列表（整数数组，从1开始）
+  message?: string;  // 响应消息
 }
 
 export async function listDirectUploadedParts(data: DirectListUploadedPartsRequest) {
@@ -1006,8 +1015,12 @@ export interface DirectCompleteMultipartRequest {
 }
 
 export interface DirectCompleteMultipartResponse {
-  message: string;
-  file_path: string;
+  task_id?: string;  // 任务ID
+  filename?: string;  // 文件名
+  file_path: string;  // 文件路径
+  file_size?: number;  // 文件大小
+  status?: string;  // 状态（如 "completed"）
+  message: string;  // 响应消息
 }
 
 export async function completeDirectMultipartUpload(data: DirectCompleteMultipartRequest) {
