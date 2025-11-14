@@ -181,11 +181,19 @@ export async function getUploadConfig() {
 // ============= Direct 上传模式接口 =============
 
 export interface DirectUploadParams {
-  master_file: File;
+  // 方式1：直接上传文件（原有方式）
+  master_file?: File;
   include_file?: File;
+  
+  // 方式2：基于已上传文件（新方式，断点续传完成后使用）
+  task_id?: string;  // 提供 task_id 时，使用已上传的文件，不需要重新上传
+  
+  // 必需参数
   profile_name: string;
   version: string;
   job_name: string;
+  
+  // 可选参数
   job_key?: string;
   display_name?: string;
   use_gpu?: boolean;
@@ -214,10 +222,20 @@ export async function submitDirectUpload(
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     
-    // 添加文件
-    formData.append("master_file", params.master_file);
-    if (params.include_file) {
-      formData.append("include_file", params.include_file);
+    // 方式2：基于已上传文件（新方式，断点续传完成后使用）
+    if (params.task_id) {
+      // 提供 task_id 时，使用已上传的文件，不需要重新上传
+      formData.append("task_id", params.task_id);
+    } else {
+      // 方式1：直接上传文件（原有方式）
+      if (!params.master_file) {
+        reject(new Error("必须提供 master_file 或 task_id"));
+        return;
+      }
+      formData.append("master_file", params.master_file);
+      if (params.include_file) {
+        formData.append("include_file", params.include_file);
+      }
     }
     
     // 添加必需参数
@@ -265,8 +283,8 @@ export async function submitDirectUpload(
       });
     }
 
-    // 上传进度监控
-    if (onProgress) {
+    // 上传进度监控（仅在方式1：直接上传文件时有效）
+    if (onProgress && !params.task_id) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           const now = Date.now();
@@ -290,6 +308,9 @@ export async function submitDirectUpload(
           lastTime = now;
         }
       };
+    } else if (onProgress && params.task_id) {
+      // 方式2：基于已上传文件，不需要上传进度，但可以模拟进度
+      // 这里不设置上传进度监控，因为文件已经上传完成
     }
 
     xhr.onload = () => {

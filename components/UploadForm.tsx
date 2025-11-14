@@ -693,83 +693,42 @@ export default function UploadForm() {
         console.log(`✅ [Direct] Include 文件上传完成: ${includeResult.filePath}`);
       }
 
-      // 步骤 3: 提交任务
+      // 步骤 3: 提交任务（基于已上传文件）
       setUploadStep("✅ 提交任务...");
       setUploadProgress(95);
 
       // Direct 模式断点续传上传完成后，文件已经在服务器上
-      // 但是 createTask 接口期望 master_file 字段（文件本身）
-      // 解决方案：传递原始文件对象，后端应该能够识别文件已存在并跳过上传
-      // 或者使用 task_id 来关联已上传的文件
-      
-      const formData = new FormData();
-      // 传递原始文件对象（即使文件已上传，接口仍需要这个字段）
-      formData.append("master_file", masterFile);
-      
-      if (includeArchive) {
-        formData.append("include_file", includeArchive);
+      // 使用方式2：基于已上传文件创建任务
+      // 后端会自动查找已上传的文件并解压 include 文件
+      if (!masterTaskId) {
+        throw new Error("[Direct] 断点续传上传失败：未获取到任务ID");
       }
       
-      formData.append("profile_name", profileName.trim());
-      formData.append("version", version.trim());
-      formData.append("job_name", jobName.trim());
-      
-      // 如果后端支持，传递 task_id 来关联已上传的文件
-      if (masterTaskId) {
-        formData.append("task_id", masterTaskId);
-      }
+      const params: DirectUploadParams = {
+        // 方式2：基于已上传文件（新方式）
+        task_id: masterTaskId,  // 使用已上传文件的 task_id，不需要重新上传
+        profile_name: profileName.trim(),
+        version: version.trim(),
+        job_name: jobName.trim(),
+        project_dir: projectDir.trim() || undefined,
+        use_gpu: useGpu || undefined,
+        simulation_index: simulationIndex.trim() || undefined,
+        thread_count: threadCount.trim() || undefined,
+        priority: priority.trim() || undefined,
+        ray_count: rayCount.trim() || undefined,
+        duration_minutes: durationMinutes.trim() || undefined,
+        hpc_job_name: hpcJobName.trim() || undefined,
+        node_count: nodeCount.trim() || undefined,
+        walltime_hours: walltimeHours.trim() || undefined,
+      };
 
-      const projectDirValue = projectDir.trim();
-      if (projectDirValue) {
-        formData.append("project_dir", projectDirValue);
-      }
-
-      if (useGpu) {
-        formData.append("use_gpu", "true");
-      }
-
-      const trimmedSimulation = simulationIndex.trim();
-      if (trimmedSimulation) {
-        formData.append("simulation_index", trimmedSimulation);
-      }
-
-      const trimmedThreads = threadCount.trim();
-      if (trimmedThreads) {
-        formData.append("thread_count", trimmedThreads);
-      }
-
-      const trimmedPriority = priority.trim();
-      if (trimmedPriority) {
-        formData.append("priority", trimmedPriority);
-      }
-
-      const trimmedRays = rayCount.trim();
-      if (trimmedRays) {
-        formData.append("ray_count", trimmedRays);
-      }
-
-      const trimmedDuration = durationMinutes.trim();
-      if (trimmedDuration) {
-        formData.append("duration_minutes", trimmedDuration);
-      }
-
-      const trimmedJobName = hpcJobName.trim();
-      if (trimmedJobName) {
-        formData.append("hpc_job_name", trimmedJobName);
-      }
-
-      const trimmedNodes = nodeCount.trim();
-      if (trimmedNodes) {
-        formData.append("node_count", trimmedNodes);
-      }
-
-      const trimmedWalltime = walltimeHours.trim();
-      if (trimmedWalltime) {
-        formData.append("walltime_hours", trimmedWalltime);
-      }
-
-      // 使用旧的 createTask 接口提交任务
-      const confirmData = await createTask(formData);
+      // 使用 submitDirectUpload 接口的方式2：基于已上传文件
+      // 后端会自动查找已上传的文件并解压 include 文件到 input_dir
+      const confirmData = await submitDirectUpload(
+        params,
+        undefined,  // 方式2不需要上传进度监控，因为文件已经上传完成
+        abortControllerRef.current?.signal
+      );
 
       setUploadProgress(100);
       setUploadStep("🎉 完成！");
