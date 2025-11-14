@@ -340,10 +340,16 @@ export async function submitDirectUpload(
     // 避免代理的请求大小和超时限制
     xhr.open("POST", `${directBackendUrl}/api/tasks/submit-direct`);
     
-    // 大文件设置更长的超时时间
-    const totalSize = params.master_file.size + (params.include_file?.size || 0);
-    const timeoutMinutes = totalSize > 100 * 1024 * 1024 ? 30 : 10;
-    xhr.timeout = timeoutMinutes * 60 * 1000;
+    // 设置超时时间
+    if (params.task_id) {
+      // 方式2：基于已上传文件，不需要上传，设置较短的超时时间
+      xhr.timeout = 30 * 1000; // 30秒，足够处理任务创建和文件解压
+    } else {
+      // 方式1：直接上传文件，根据文件大小设置超时时间
+      const totalSize = params.master_file!.size + (params.include_file?.size || 0);
+      const timeoutMinutes = totalSize > 100 * 1024 * 1024 ? 30 : 10;
+      xhr.timeout = timeoutMinutes * 60 * 1000;
+    }
 
     xhr.send(formData);
   });
