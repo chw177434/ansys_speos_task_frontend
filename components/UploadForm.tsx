@@ -503,21 +503,71 @@ export default function UploadForm() {
     } catch (error) {
       // 改进错误日志：正确序列化错误对象
       let errorMessage = "Direct 上传失败";
+      
+      // 辅助函数：安全地提取错误消息
+      const extractErrorMessage = (err: any): string => {
+        if (err instanceof Error) {
+          // 如果 message 是对象，尝试序列化
+          if (typeof err.message === "object" && err.message !== null) {
+            try {
+              return JSON.stringify(err.message);
+            } catch {
+              return String(err.message);
+            }
+          }
+          return err.message || "未知错误";
+        }
+        
+        if (typeof err === "string") {
+          return err;
+        }
+        
+        if (typeof err === "object" && err !== null) {
+          // 尝试从多个可能的字段中提取消息
+          const possibleFields = ["message", "detail", "error", "errorMessage", "msg"];
+          for (const field of possibleFields) {
+            const value = err[field];
+            if (value) {
+              if (typeof value === "string") {
+                return value;
+              }
+              if (typeof value === "object") {
+                try {
+                  return JSON.stringify(value);
+                } catch {
+                  return String(value);
+                }
+              }
+            }
+          }
+          
+          // 如果所有字段都失败，尝试序列化整个对象
+          try {
+            return JSON.stringify(err, null, 2);
+          } catch {
+            return String(err);
+          }
+        }
+        
+        return String(err);
+      };
+      
+      errorMessage = extractErrorMessage(error);
+      
+      // 记录详细的错误信息（避免直接打印对象导致 [object Object]）
+      console.error("Direct 上传失败", errorMessage);
       if (error instanceof Error) {
-        errorMessage = error.message;
-        console.error("Direct 上传失败", errorMessage, error);
-      } else if (typeof error === "object" && error !== null) {
-        // 尝试从错误对象中提取消息
-        const errorObj = error as any;
-        errorMessage = errorObj?.message || errorObj?.detail || errorObj?.error || JSON.stringify(error);
-        console.error("Direct 上传失败", errorMessage, error);
-      } else {
-        errorMessage = String(error);
-        console.error("Direct 上传失败", errorMessage);
+        console.error("Direct 错误堆栈:", error.stack);
+      }
+      if (typeof error === "object" && error !== null) {
+        console.error("Direct 错误详情:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       }
       
-      // 确保抛出的是 Error 对象
-      const errorToThrow = error instanceof Error ? error : new Error(errorMessage);
+      // 确保抛出的是 Error 对象，且消息不为空
+      const finalMessage = errorMessage || "Direct 上传失败";
+      const errorToThrow = error instanceof Error && error.message 
+        ? error 
+        : new Error(finalMessage);
       throw errorToThrow;
     }
   };
@@ -756,21 +806,71 @@ export default function UploadForm() {
     } catch (error) {
       // 改进错误日志：正确序列化错误对象
       let errorMessage = "断点续传上传失败";
+      
+      // 辅助函数：安全地提取错误消息
+      const extractErrorMessage = (err: any): string => {
+        if (err instanceof Error) {
+          // 如果 message 是对象，尝试序列化
+          if (typeof err.message === "object" && err.message !== null) {
+            try {
+              return JSON.stringify(err.message);
+            } catch {
+              return String(err.message);
+            }
+          }
+          return err.message || "未知错误";
+        }
+        
+        if (typeof err === "string") {
+          return err;
+        }
+        
+        if (typeof err === "object" && err !== null) {
+          // 尝试从多个可能的字段中提取消息
+          const possibleFields = ["message", "detail", "error", "errorMessage", "msg"];
+          for (const field of possibleFields) {
+            const value = err[field];
+            if (value) {
+              if (typeof value === "string") {
+                return value;
+              }
+              if (typeof value === "object") {
+                try {
+                  return JSON.stringify(value);
+                } catch {
+                  return String(value);
+                }
+              }
+            }
+          }
+          
+          // 如果所有字段都失败，尝试序列化整个对象
+          try {
+            return JSON.stringify(err, null, 2);
+          } catch {
+            return String(err);
+          }
+        }
+        
+        return String(err);
+      };
+      
+      errorMessage = extractErrorMessage(error);
+      
+      // 记录详细的错误信息（避免直接打印对象导致 [object Object]）
+      console.error("[Direct] 断点续传上传失败", errorMessage);
       if (error instanceof Error) {
-        errorMessage = error.message;
-        console.error("[Direct] 断点续传上传失败", errorMessage, error);
-      } else if (typeof error === "object" && error !== null) {
-        // 尝试从错误对象中提取消息
-        const errorObj = error as any;
-        errorMessage = errorObj?.message || errorObj?.detail || errorObj?.error || JSON.stringify(error);
-        console.error("[Direct] 断点续传上传失败", errorMessage, error);
-      } else {
-        errorMessage = String(error);
-        console.error("[Direct] 断点续传上传失败", errorMessage);
+        console.error("[Direct] 错误堆栈:", error.stack);
+      }
+      if (typeof error === "object" && error !== null) {
+        console.error("[Direct] 错误详情:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       }
       
-      // 确保抛出的是 Error 对象
-      const errorToThrow = error instanceof Error ? error : new Error(errorMessage);
+      // 确保抛出的是 Error 对象，且消息不为空
+      const finalMessage = errorMessage || "断点续传上传失败";
+      const errorToThrow = error instanceof Error && error.message 
+        ? error 
+        : new Error(finalMessage);
       throw errorToThrow;
     } finally {
       setIsResumableUpload(false);

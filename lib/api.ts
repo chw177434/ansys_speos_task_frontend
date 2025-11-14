@@ -26,10 +26,26 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
     try {
       const data = JSON.parse(text);
       const detail = data?.detail || data?.message;
-      throw new Error(detail || text || res.statusText);
+      
+      // 确保错误消息是字符串，而不是对象
+      let errorMessage: string;
+      if (typeof detail === "string") {
+        errorMessage = detail;
+      } else if (typeof detail === "object" && detail !== null) {
+        // 如果 detail 是对象，尝试序列化
+        try {
+          errorMessage = JSON.stringify(detail);
+        } catch {
+          errorMessage = String(detail);
+        }
+      } else {
+        errorMessage = text || res.statusText || `请求失败: ${res.status}`;
+      }
+      
+      throw new Error(errorMessage);
     } catch (err) {
       if (err instanceof Error) throw err;
-      throw new Error(text || res.statusText);
+      throw new Error(text || res.statusText || `请求失败: ${res.status}`);
     }
   }
 
