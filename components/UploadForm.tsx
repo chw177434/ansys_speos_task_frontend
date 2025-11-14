@@ -501,8 +501,24 @@ export default function UploadForm() {
         );
       }
     } catch (error) {
-      console.error("Direct 上传失败", error);
-      throw error;
+      // 改进错误日志：正确序列化错误对象
+      let errorMessage = "Direct 上传失败";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error("Direct 上传失败", errorMessage, error);
+      } else if (typeof error === "object" && error !== null) {
+        // 尝试从错误对象中提取消息
+        const errorObj = error as any;
+        errorMessage = errorObj?.message || errorObj?.detail || errorObj?.error || JSON.stringify(error);
+        console.error("Direct 上传失败", errorMessage, error);
+      } else {
+        errorMessage = String(error);
+        console.error("Direct 上传失败", errorMessage);
+      }
+      
+      // 确保抛出的是 Error 对象
+      const errorToThrow = error instanceof Error ? error : new Error(errorMessage);
+      throw errorToThrow;
     }
   };
 
@@ -738,8 +754,24 @@ export default function UploadForm() {
         );
       }
     } catch (error) {
-      console.error("[Direct] 断点续传上传失败", error);
-      throw error;
+      // 改进错误日志：正确序列化错误对象
+      let errorMessage = "断点续传上传失败";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error("[Direct] 断点续传上传失败", errorMessage, error);
+      } else if (typeof error === "object" && error !== null) {
+        // 尝试从错误对象中提取消息
+        const errorObj = error as any;
+        errorMessage = errorObj?.message || errorObj?.detail || errorObj?.error || JSON.stringify(error);
+        console.error("[Direct] 断点续传上传失败", errorMessage, error);
+      } else {
+        errorMessage = String(error);
+        console.error("[Direct] 断点续传上传失败", errorMessage);
+      }
+      
+      // 确保抛出的是 Error 对象
+      const errorToThrow = error instanceof Error ? error : new Error(errorMessage);
+      throw errorToThrow;
     } finally {
       setIsResumableUpload(false);
       setTotalChunks(0);
