@@ -639,6 +639,7 @@ export default function UploadForm() {
       console.log(`✅ [Direct] Master 文件上传完成: ${masterResult.filePath}`);
 
       // 步骤 2: 如果有 include 文件，也使用分片上传
+      // ⚠️ 重要：include 文件必须使用与 master 文件相同的 task_id
       if (includeArchive) {
         setUploadStep("⬆️ [Direct] 上传 Include 文件（分片模式）");
         
@@ -664,12 +665,24 @@ export default function UploadForm() {
           });
         }
         
+        // ⚠️ 关键修复：确保 include 文件使用与 master 文件相同的 task_id
+        // 如果 master 文件已经上传完成，强制使用 master 的 task_id
+        // 这样可以确保所有文件都在同一个目录下
+        const includeTaskIdToUse = masterTaskId || existingIncludeTaskId;
+        
+        if (masterTaskId && existingIncludeTaskId && existingIncludeTaskId !== masterTaskId) {
+          console.warn(
+            `⚠️ [Direct] Include 文件的未完成上传使用了不同的 task_id: ${existingIncludeTaskId}，` +
+            `将使用 master 文件的 task_id: ${masterTaskId} 以确保文件在同一目录`
+          );
+        }
+        
         const includeResult = await uploadFileWithDirectResumable(
           includeArchive,
           includeFilename,
           "include",
           {
-            existingTaskId: existingIncludeTaskId,
+            existingTaskId: includeTaskIdToUse,  // 使用 master 的 task_id
             existingUploadId: existingIncludeUploadId,
             onProgress: (info: DirectUploadProgressInfo) => {
               setTotalChunks(info.totalChunks);
@@ -690,7 +703,16 @@ export default function UploadForm() {
         );
 
         includeFilePath = includeResult.filePath;
-        console.log(`✅ [Direct] Include 文件上传完成: ${includeResult.filePath}`);
+        console.log(`✅ [Direct] Include 文件上传完成: ${includeResult.filePath}, taskId=${includeResult.taskId}`);
+        
+        // 验证 task_id 一致性
+        if (masterTaskId && includeResult.taskId !== masterTaskId) {
+          console.error(
+            `❌ [Direct] 错误：Include 文件返回了不同的 task_id！` +
+            `Master: ${masterTaskId}, Include: ${includeResult.taskId}`
+          );
+          // 虽然不一致，但我们仍然使用 master 的 task_id 来提交任务
+        }
       }
 
       // 步骤 3: 提交任务（基于已上传文件）
@@ -704,9 +726,17 @@ export default function UploadForm() {
         throw new Error("[Direct] 断点续传上传失败：未获取到任务ID");
       }
       
+      // ⚠️ 关键：确保使用 master 文件的 task_id 来提交任务
+      // 这个 task_id 必须与 master 文件上传时使用的 task_id 一致
+      console.log(`📤 [Direct] 准备提交任务，使用 task_id: ${masterTaskId}`);
+      console.log(`📤 [Direct] Master 文件路径: ${masterFilePath || "N/A"}`);
+      if (includeFilePath) {
+        console.log(`📤 [Direct] Include 文件路径: ${includeFilePath}`);
+      }
+      
       const params: DirectUploadParams = {
         // 方式2：基于已上传文件（新方式）
-        task_id: masterTaskId,  // 使用已上传文件的 task_id，不需要重新上传
+        task_id: masterTaskId,  // ⚡ 使用 master 文件的 task_id，确保与上传时一致
         profile_name: profileName.trim(),
         version: version.trim(),
         job_name: jobName.trim(),
