@@ -665,16 +665,24 @@ export default function UploadForm() {
           });
         }
         
-        // ⚠️ 关键修复：确保 include 文件使用与 master 文件相同的 task_id
-        // 如果 master 文件已经上传完成，强制使用 master 的 task_id
-        // 这样可以确保所有文件都在同一个目录下
-        const includeTaskIdToUse = masterTaskId || existingIncludeTaskId;
+        // ✅ 根据后端规范：include 文件必须使用与 master 文件相同的 task_id
+        // 后端完全支持 task_id 参数，传递时会直接使用（不创建新的）
+        // 这样可以确保所有文件都在同一个目录：{INPUT_DIR}/{task_id}/
+        if (!masterTaskId) {
+          throw new Error("[Direct] Master 文件上传未完成，无法获取 task_id");
+        }
         
-        if (masterTaskId && existingIncludeTaskId && existingIncludeTaskId !== masterTaskId) {
+        // 强制使用 master 的 task_id，忽略 include 文件的未完成上传的 task_id（如果不同）
+        const includeTaskIdToUse = masterTaskId;
+        
+        if (existingIncludeTaskId && existingIncludeTaskId !== masterTaskId) {
           console.warn(
             `⚠️ [Direct] Include 文件的未完成上传使用了不同的 task_id: ${existingIncludeTaskId}，` +
-            `将使用 master 文件的 task_id: ${masterTaskId} 以确保文件在同一目录`
+            `将使用 master 文件的 task_id: ${masterTaskId} 以确保文件在同一目录。` +
+            `未完成的上传进度将被忽略。`
           );
+        } else if (existingIncludeTaskId === masterTaskId) {
+          console.log(`✅ [Direct] Include 文件的未完成上传与 master 使用相同的 task_id: ${masterTaskId}`);
         }
         
         const includeResult = await uploadFileWithDirectResumable(
@@ -705,13 +713,20 @@ export default function UploadForm() {
         includeFilePath = includeResult.filePath;
         console.log(`✅ [Direct] Include 文件上传完成: ${includeResult.filePath}, taskId=${includeResult.taskId}`);
         
+        // ✅ 根据后端规范：如果传递了 task_id，返回的应该与传递的完全一致
         // 验证 task_id 一致性
         if (masterTaskId && includeResult.taskId !== masterTaskId) {
           console.error(
-            `❌ [Direct] 错误：Include 文件返回了不同的 task_id！` +
-            `Master: ${masterTaskId}, Include: ${includeResult.taskId}`
+            `❌ [Direct] Include 文件返回了不同的 task_id！这不符合后端规范。` +
+            `\n请求的 task_id: ${masterTaskId}, 返回的 task_id: ${includeResult.taskId}` +
+            `\n后端应该返回与请求相同的 task_id。` +
+            `\n虽然后端有跨目录查找容错机制可以处理这种情况，但这不是最佳实践。`
           );
           // 虽然不一致，但我们仍然使用 master 的 task_id 来提交任务
+          // 后端已经实现了跨目录查找逻辑（5分钟时间窗口），可以在其他目录中查找最近上传的文件
+        } else if (masterTaskId && includeResult.taskId === masterTaskId) {
+          console.log(`✅ [Direct] Include 文件正确使用了与 Master 相同的 task_id: ${masterTaskId}`);
+          console.log(`✅ [Direct] 所有文件都在同一目录: {INPUT_DIR}/${masterTaskId}/`);
         }
       }
 
@@ -726,12 +741,19 @@ export default function UploadForm() {
         throw new Error("[Direct] 断点续传上传失败：未获取到任务ID");
       }
       
-      // ⚠️ 关键：确保使用 master 文件的 task_id 来提交任务
-      // 这个 task_id 必须与 master 文件上传时使用的 task_id 一致
-      console.log(`📤 [Direct] 准备提交任务，使用 task_id: ${masterTaskId}`);
+      // ✅ 根据后端规范：使用 master 文件的 task_id 来提交任务
+      // 后端会在 {INPUT_DIR}/{task_id}/ 目录下查找文件：
+      // - Master 文件：第一个找到的文件
+      // - Include 压缩包：查找 .zip, .rar, .7z 等格式
+      // - 如果找不到，会在其他目录中查找最近 5 分钟内上传的文件（容错机制）
+      console.log(`📤 [Direct] 准备提交任务`);
+      console.log(`📤 [Direct] 使用 task_id: ${masterTaskId}`);
       console.log(`📤 [Direct] Master 文件路径: ${masterFilePath || "N/A"}`);
       if (includeFilePath) {
         console.log(`📤 [Direct] Include 文件路径: ${includeFilePath}`);
+        console.log(`📤 [Direct] 后端将自动解压 Include 文件到: {INPUT_DIR}/${masterTaskId}/`);
+      } else {
+        console.log(`📤 [Direct] 没有 Include 文件，将只处理 Master 文件`);
       }
       
       const params: DirectUploadParams = {

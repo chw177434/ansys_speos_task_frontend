@@ -839,6 +839,7 @@ export interface DirectMultipartInitRequest {
   file_size: number;
   file_type: "master" | "include";
   chunk_size?: number;
+  task_id?: string;  // 可选：如果提供，使用指定的 task_id（用于 include 文件与 master 文件使用相同的 task_id）
 }
 
 export interface DirectMultipartInitResponse {

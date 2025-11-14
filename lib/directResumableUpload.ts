@@ -199,12 +199,34 @@ export class DirectResumableUploadManager {
     // 初始化新的分片上传
     console.log(`[Direct] 🚀 初始化分片上传: ${this.filename} (${this.formatBytes(this.file.size)})`);
     
-    const initResponse = await initDirectMultipartUpload({
+    const initRequest: any = {
       filename: this.filename,
       file_size: this.file.size,
       file_type: this.fileType,
       chunk_size: CHUNK_SIZE,
-    });
+    };
+    
+    // 如果已有 task_id（例如 include 文件需要使用与 master 相同的 task_id），传递给后端
+    if (this.taskId) {
+      initRequest.task_id = this.taskId;
+      console.log(`[Direct] 📌 使用指定的 task_id: ${this.taskId}`);
+    }
+    
+    const initResponse = await initDirectMultipartUpload(initRequest);
+    
+    // 根据后端规范：如果传递了 task_id，返回的 task_id 应该与传递的完全一致
+    // 如果返回了不同的 task_id，说明后端可能不支持该参数或有问题
+    if (this.taskId && initResponse.task_id !== this.taskId) {
+      console.error(
+        `❌ [Direct] 后端返回了不同的 task_id！这不符合后端规范。` +
+        `请求的 task_id: ${this.taskId}, 返回的 task_id: ${initResponse.task_id}` +
+        `\n后端应该返回与请求相同的 task_id。请检查后端实现。`
+      );
+      // 虽然不一致，但继续使用后端返回的 task_id，避免流程中断
+      // 后端有跨目录查找容错机制，可以处理这种情况
+    } else if (this.taskId && initResponse.task_id === this.taskId) {
+      console.log(`✅ [Direct] 后端正确返回了请求的 task_id: ${this.taskId}`);
+    }
     
     this.taskId = initResponse.task_id;
     this.uploadId = initResponse.upload_id;
