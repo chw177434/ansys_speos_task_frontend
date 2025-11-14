@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_BASE,
   deleteTask,
@@ -541,6 +541,9 @@ export default function TasksTable() {
   const [error, setError] = useState<string | null>(null);
   const [pagingMode, setPagingMode] = useState<"unknown" | "server" | "client">("unknown");
   const [statusTimestamps, setStatusTimestamps] = useState<StatusTimestampMap>({});
+  
+  // ✅ 使用 ref 保存当前任务状态，用于检测状态变化
+  const currentTasksRef = useRef<Map<string, TableTask>>(new Map());
 
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -703,6 +706,19 @@ export default function TasksTable() {
         const rowsFromServer = createRows(items);
         const fetchMoment = Date.now();
         
+        // ✅ 检测状态变化：找出从非成功变为成功的任务
+        const currentTaskMap = currentTasksRef.current;
+        const newlyCompletedTasks: string[] = [];
+        
+        // 比较新旧任务状态，找出刚完成的任务
+        rowsFromServer.forEach((newTask) => {
+          const oldTask = currentTaskMap.get(newTask.task_id);
+          // 如果任务状态从非成功变为成功，标记为需要立即获取输出文件
+          if (newTask.status === "SUCCESS" && oldTask && oldTask.status !== "SUCCESS") {
+            newlyCompletedTasks.push(newTask.task_id);
+          }
+        });
+        
         setStatusTimestamps((current) => {
           const next: StatusTimestampMap = {};
           rowsFromServer.forEach((item) => {
@@ -751,6 +767,25 @@ export default function TasksTable() {
           setPageSize(targetSize);
           setRows(sliceRows(rowsFromServer, targetPage, targetSize));
         }
+        
+        // ✅ 更新 ref 中的任务状态（在状态更新后）
+        // 注意：这里使用 rowsFromServer 而不是 state，因为 state 更新是异步的
+        currentTaskMap.clear();
+        rowsFromServer.forEach((task) => {
+          currentTaskMap.set(task.task_id, task);
+        });
+        
+        // ✅ 立即为刚完成的任务获取输出文件（不等待 useEffect）
+        // 使用 setTimeout 确保状态已更新后再获取输出文件
+        if (newlyCompletedTasks.length > 0) {
+          console.log(`✅ 检测到 ${newlyCompletedTasks.length} 个任务刚完成，立即获取输出文件:`, newlyCompletedTasks);
+          newlyCompletedTasks.forEach((taskId) => {
+            // 延迟执行，确保 React 状态已更新
+            setTimeout(() => {
+              void fetchOutputsForTask(taskId);
+            }, 200);
+          });
+        }
       } catch (err) {
         // 改为更友好的错误处理，避免在开发环境中显示红色错误
         const errorMessage = err instanceof Error ? err.message : "任务列表加载失败";
@@ -771,7 +806,7 @@ export default function TasksTable() {
         setLoading(false);
       }
     },
-    []
+    [fetchOutputsForTask, isClientPaging]
   );
 
   useEffect(() => {
