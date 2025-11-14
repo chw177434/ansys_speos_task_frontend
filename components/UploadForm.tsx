@@ -693,26 +693,30 @@ export default function UploadForm() {
         console.log(`✅ [Direct] Include 文件上传完成: ${includeResult.filePath}`);
       }
 
-      // 步骤 3: 提交任务（使用 confirmUpload）
+      // 步骤 3: 提交任务
       setUploadStep("✅ 提交任务...");
       setUploadProgress(95);
 
-      // Direct 模式上传完成后，需要创建任务
-      // 注意：这里需要使用 Direct 模式的任务创建接口
-      // 由于文件已上传，我们需要使用特殊的确认接口
-      
-      // 临时方案：使用旧的 Direct 模式提交（文件已在服务器，只需创建任务）
-      // 实际应该有一个专门的 Direct 模式确认接口
+      // Direct 模式断点续传上传完成后，文件已经在服务器上
+      // 但是 createTask 接口期望 master_file 字段（文件本身）
+      // 解决方案：传递原始文件对象，后端应该能够识别文件已存在并跳过上传
+      // 或者使用 task_id 来关联已上传的文件
       
       const formData = new FormData();
+      // 传递原始文件对象（即使文件已上传，接口仍需要这个字段）
+      formData.append("master_file", masterFile);
+      
+      if (includeArchive) {
+        formData.append("include_file", includeArchive);
+      }
+      
       formData.append("profile_name", profileName.trim());
       formData.append("version", version.trim());
       formData.append("job_name", jobName.trim());
-      formData.append("task_id", masterTaskId);  // 传递已上传的任务ID
-      formData.append("master_file_path", masterFilePath);  // 传递已上传的文件路径
       
-      if (includeFilePath) {
-        formData.append("include_file_path", includeFilePath);
+      // 如果后端支持，传递 task_id 来关联已上传的文件
+      if (masterTaskId) {
+        formData.append("task_id", masterTaskId);
       }
 
       const projectDirValue = projectDir.trim();
