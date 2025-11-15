@@ -813,21 +813,76 @@ export default function TasksTable() {
     void fetchTasks(1, DEFAULT_PAGE_SIZE);
   }, [fetchTasks]);
 
+  // ✅ 获取成功任务的输出文件（一次性，不需要轮询）
   useEffect(() => {
     baseRows.forEach((task) => {
       // 获取成功任务的输出文件
       if (task.status === "SUCCESS" && !task.outputsFetched && !task.outputsLoading) {
         void fetchOutputsForTask(task.task_id);
       }
-      
-      // ✅ 新增：获取运行中任务的进度信息
-      // 只对运行中的任务调用 detail 接口
-      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
-      if (runningStatuses.includes(task.status)) {
-        void fetchProgressForTask(task.task_id);
-      }
     });
-  }, [baseRows, fetchOutputsForTask, fetchProgressForTask]);
+  }, [baseRows, fetchOutputsForTask]);
+
+  // ⚡ 优化后的进度信息轮询：使用独立定时器，根据任务状态设置不同间隔
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    // 找出需要轮询的任务（运行中或等待中的任务）
+    const tasksToPoll = baseRows.filter((task) => {
+      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+      const pendingStatuses = ["PENDING", "RETRY"];
+      return runningStatuses.includes(task.status) || pendingStatuses.includes(task.status);
+    });
+
+    // 如果没有需要轮询的任务，直接返回
+    if (tasksToPoll.length === 0) {
+      return undefined;
+    }
+
+    // 存储每个任务的轮询定时器（使用 Map 确保可以正确清理）
+    const timers = new Map<string, number>();
+
+    tasksToPoll.forEach((task) => {
+      // 根据任务状态设置不同的轮询间隔
+      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+      const isRunning = runningStatuses.includes(task.status);
+      
+      // 运行中任务：8秒轮询一次（略大于后端5秒缓存，减少无效请求）
+      // 等待中任务：15秒轮询一次（频率更低）
+      const pollInterval = isRunning ? 8000 : 15000;
+
+      // 立即执行一次（不等待第一个间隔）
+      void fetchProgressForTask(task.task_id);
+
+      // 设置定时轮询
+      const taskId = task.task_id;
+      const timer = window.setInterval(() => {
+        // ⚡ 使用 ref 获取最新的任务状态（避免闭包问题）
+        const currentTask = currentTasksRef.current.get(taskId);
+        if (currentTask && !TERMINAL_STATUSES.has(currentTask.status)) {
+          // 任务仍在运行或等待中，继续轮询
+          void fetchProgressForTask(taskId);
+        } else {
+          // 任务已完成，清除定时器
+          const existingTimer = timers.get(taskId);
+          if (existingTimer) {
+            window.clearInterval(existingTimer);
+            timers.delete(taskId);
+          }
+        }
+      }, pollInterval);
+
+      timers.set(taskId, timer);
+    });
+
+    // 清理函数：清除所有定时器
+    return () => {
+      timers.forEach((timer) => {
+        window.clearInterval(timer);
+      });
+      timers.clear();
+    };
+  }, [baseRows, fetchProgressForTask]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -842,14 +897,34 @@ export default function TasksTable() {
     };
   }, [fetchTasks, pageSize]);
 
+  // ⚡ 优化后的主列表轮询：根据任务状态设置不同间隔
   useEffect(() => {
-    const hasPending = baseRows.some((task) => !TERMINAL_STATUSES.has(task.status));
-    if (!hasPending) return;
+    if (typeof window === "undefined") return undefined;
+
+    // 找出需要轮询的任务
+    const runningTasks = baseRows.filter((task) => {
+      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+      return runningStatuses.includes(task.status);
+    });
+    const pendingTasks = baseRows.filter((task) => {
+      const pendingStatuses = ["PENDING", "RETRY"];
+      return pendingStatuses.includes(task.status);
+    });
+
+    // 如果没有需要轮询的任务，停止轮询
+    if (runningTasks.length === 0 && pendingTasks.length === 0) {
+      return undefined;
+    }
+
+    // 根据任务状态设置不同的轮询间隔
+    // 运行中任务：10秒轮询一次（略大于后端5秒缓存，避免无效请求）
+    // 只有等待中任务：15秒轮询一次（频率更低）
+    const pollInterval = runningTasks.length > 0 ? 10000 : 15000;
 
     const targetPage = isClientPaging ? 1 : page;
     const timer = window.setInterval(() => {
       void fetchTasks(targetPage, pageSize);
-    }, 5000);
+    }, pollInterval);
 
     return () => {
       window.clearInterval(timer);
