@@ -705,6 +705,7 @@ export default function TasksTable() {
   // ⚡ 使用 ref 存储正在获取输出的任务，避免重复调用
   const fetchingOutputsRef = useRef<Set<string>>(new Set());
 
+  // ⚡ 必须先定义 fetchOutputsForTask，因为 fetchTasks 依赖它
   const fetchOutputsForTask = useCallback(
     async (taskId: string) => {
       // ⚡ 防止重复调用：如果正在获取中，直接返回
@@ -760,57 +761,7 @@ export default function TasksTable() {
     [applyTaskUpdate]
   );
 
-  // ✅ 新增：获取运行中任务的详细进度信息
-  const fetchProgressForTask = useCallback(
-    async (taskId: string) => {
-      try {
-        // 调用 detail 接口获取完整的任务信息（包括 progress_info 和 status）
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/detail`);
-        if (!response.ok) {
-          console.warn(`Failed to fetch progress for task ${taskId}`);
-          return;
-        }
-
-        const data = await response.json();
-        
-        // ⚡ 检查任务状态是否变化
-        const oldTask = currentTasksRef.current.get(taskId);
-        const newStatus = data.status;
-        const wasSuccess = oldTask?.status === "SUCCESS";
-        const isSuccess = newStatus === "SUCCESS";
-        const statusChanged = oldTask && oldTask.status !== newStatus;
-        
-        // 更新任务的 progress_info 和状态
-        applyTaskUpdate(taskId, (task) => ({
-          ...task,
-          status: newStatus || task.status,
-          progress_info: data.progress_info || null,
-          duration: data.duration ?? task.duration,
-          elapsed_seconds: data.elapsed_seconds ?? task.elapsed_seconds,
-        }));
-        
-        // ⚡ 如果任务状态变为 SUCCESS，立即刷新任务列表并获取输出文件
-        if (statusChanged && isSuccess && !wasSuccess) {
-          console.log(`✅ [Polling] 检测到任务 ${taskId} 状态变为 SUCCESS，立即刷新任务列表`);
-          
-          // 立即刷新任务列表（获取最新状态）
-          // ⚡ 使用 ref 获取最新的分页信息，避免闭包问题
-          const { page: currentPage, pageSize: currentPageSize, isClientPaging: currentIsClientPaging } = pagingInfoRef.current;
-          const targetPage = currentIsClientPaging ? 1 : currentPage;
-          void fetchTasks(targetPage, currentPageSize).then(() => {
-            // 刷新后，稍等片刻确保状态已更新，然后获取输出文件
-            setTimeout(() => {
-              void fetchOutputsForTask(taskId);
-            }, 300);
-          });
-        }
-      } catch (err) {
-        console.warn(`Error fetching progress for task ${taskId}:`, err);
-      }
-    },
-    [applyTaskUpdate, fetchTasks, fetchOutputsForTask]
-  );
-
+  // ⚡ 然后定义 fetchTasks（它依赖 fetchOutputsForTask）
   const fetchTasks = useCallback(
     async (targetPage: number, targetSize: number) => {
       setLoading(true);
@@ -953,6 +904,57 @@ export default function TasksTable() {
       }
     },
     [fetchOutputsForTask, isClientPaging]
+  );
+
+  // ⚡ 最后定义 fetchProgressForTask（它依赖 fetchTasks 和 fetchOutputsForTask）
+  const fetchProgressForTask = useCallback(
+    async (taskId: string) => {
+      try {
+        // 调用 detail 接口获取完整的任务信息（包括 progress_info 和 status）
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/detail`);
+        if (!response.ok) {
+          console.warn(`Failed to fetch progress for task ${taskId}`);
+          return;
+        }
+
+        const data = await response.json();
+        
+        // ⚡ 检查任务状态是否变化
+        const oldTask = currentTasksRef.current.get(taskId);
+        const newStatus = data.status;
+        const wasSuccess = oldTask?.status === "SUCCESS";
+        const isSuccess = newStatus === "SUCCESS";
+        const statusChanged = oldTask && oldTask.status !== newStatus;
+        
+        // 更新任务的 progress_info 和状态
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          status: newStatus || task.status,
+          progress_info: data.progress_info || null,
+          duration: data.duration ?? task.duration,
+          elapsed_seconds: data.elapsed_seconds ?? task.elapsed_seconds,
+        }));
+        
+        // ⚡ 如果任务状态变为 SUCCESS，立即刷新任务列表并获取输出文件
+        if (statusChanged && isSuccess && !wasSuccess) {
+          console.log(`✅ [Polling] 检测到任务 ${taskId} 状态变为 SUCCESS，立即刷新任务列表`);
+          
+          // 立即刷新任务列表（获取最新状态）
+          // ⚡ 使用 ref 获取最新的分页信息，避免闭包问题
+          const { page: currentPage, pageSize: currentPageSize, isClientPaging: currentIsClientPaging } = pagingInfoRef.current;
+          const targetPage = currentIsClientPaging ? 1 : currentPage;
+          void fetchTasks(targetPage, currentPageSize).then(() => {
+            // 刷新后，稍等片刻确保状态已更新，然后获取输出文件
+            setTimeout(() => {
+              void fetchOutputsForTask(taskId);
+            }, 300);
+          });
+        }
+      } catch (err) {
+        console.warn(`Error fetching progress for task ${taskId}:`, err);
+      }
+    },
+    [applyTaskUpdate, fetchTasks, fetchOutputsForTask]
   );
 
   useEffect(() => {
