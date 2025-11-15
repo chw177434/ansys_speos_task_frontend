@@ -586,27 +586,26 @@ export default function UploadForm() {
     let includeFilePath: string | null = null;
 
     try {
-      // ⚡ 步骤 0.5: 验证文件类型（在开始上传前检查，立即发现错误）
-      console.log(`[Direct] 📋 验证文件类型:`);
+      // ⚡ 步骤 0.5: 检测文件类型并记录日志（不阻止，让后端自动修正）
+      console.log(`[Direct] 📋 文件类型检测:`);
       console.log(`  - Master 文件名: ${masterFile.name}`);
       console.log(`  - Master 文件大小: ${formatFileSize(masterFile.size)}`);
       
       const detectedMasterType = detectFileTypeFromFilename(masterFile.name);
       console.log(`  - 检测到的 Master 类型: ${detectedMasterType}`);
       
-      if (detectedMasterType !== "master") {
-        const errorMsg = 
-          `❌ Master 文件类型错误！\n\n` +
-          `文件名: ${masterFile.name}\n` +
-          `检测到的类型: ${detectedMasterType} (${detectedMasterType === "include" ? "压缩包" : "未知"})\n\n` +
-          `Master 文件必须是 .speos 或 .sv5 文件，不能是压缩包格式。\n\n` +
-          `请检查您选择的 Master 文件是否正确。\n` +
-          `如果您选择了 zip 文件，请：\n` +
-          `1. 选择 .speos 或 .sv5 文件作为 Master 文件\n` +
-          `2. 将 zip 文件作为 Include 文件上传`;
-        
-        console.error(errorMsg);
-        throw new Error(`Master file cannot be an archive file. Found: ${masterFile.name}. Master file must be a .speos or .sv5 file.`);
+      // ⚠️ 如果 Master 文件是压缩包，记录警告（后端会自动修正为 "include"）
+      if (detectedMasterType === "include") {
+        console.warn(
+          `⚠️ [Direct] Master 文件类型可能不匹配（后端将自动修正）：\n` +
+          `  - 文件名: ${masterFile.name} (压缩包格式)\n` +
+          `  - 检测到的类型: ${detectedMasterType} (include)\n` +
+          `  - 后端将自动将 file_type 修正为 "include" 并继续处理\n` +
+          `  - 建议：Master 文件应该是 .speos 或 .sv5 文件，zip 文件应作为 Include 文件上传`
+        );
+        // 不抛出错误，让后端自动修正
+      } else {
+        console.log(`✅ [Direct] Master 文件类型匹配：${masterFile.name} (${detectedMasterType})`);
       }
       
       if (includeArchive) {
@@ -616,19 +615,23 @@ export default function UploadForm() {
         const detectedIncludeType = detectFileTypeFromFilename(includeArchive.name);
         console.log(`  - 检测到的 Include 类型: ${detectedIncludeType}`);
         
+        // ❌ 如果 Include 文件不是压缩包，必须阻止（后端会报错）
         if (detectedIncludeType !== "include") {
           const errorMsg = 
             `❌ Include 文件类型错误！\n\n` +
             `文件名: ${includeArchive.name}\n` +
             `检测到的类型: ${detectedIncludeType} (.speos/.sv5)\n\n` +
-            `Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）`;
+            `Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）\n` +
+            `如果这是 Master 文件，请选择正确的文件类型。`;
           
           console.error(errorMsg);
           throw new Error(`Include file must be an archive file. Found: ${includeArchive.name}. Include file must be a .zip, .rar, .7z, .tar, .gz, or .tar.gz file.`);
+        } else {
+          console.log(`✅ [Direct] Include 文件类型匹配：${includeArchive.name} (${detectedIncludeType})`);
         }
       }
       
-      console.log(`✅ [Direct] 文件类型验证通过`);
+      console.log(`✅ [Direct] 文件类型检测完成（后端将自动修正不匹配的情况）`);
 
       // 步骤 0: 检查是否有未完成的上传（智能匹配）
       let existingMasterTaskId: string | undefined;

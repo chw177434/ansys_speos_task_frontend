@@ -215,36 +215,44 @@ export class DirectResumableUploadManager {
    * 初始化上传
    */
   private async initializeUpload(): Promise<void> {
-    // ⚡ 步骤 0: 首先验证当前文件的文件类型（无论是否恢复进度，都必须验证）
+    // ⚡ 步骤 0: 检测文件类型并记录日志（不阻止，让后端自动修正）
     const detectedFileType = detectFileTypeFromFilename(this.filename);
     
-    // 严格验证：master 文件不能是压缩包，include 文件必须是压缩包
+    // 记录文件类型检测结果
+    console.log(`[Direct] 📋 文件类型检测:`);
+    console.log(`  - 文件名: ${this.filename}`);
+    console.log(`  - 传入的 file_type: ${this.fileType}`);
+    console.log(`  - 检测到的类型: ${detectedFileType}`);
+    
+    // ⚠️ 如果 file_type="master" 但文件是压缩包，记录警告（后端会自动修正为 "include"）
     if (this.fileType === "master" && detectedFileType === "include") {
-      const errorMessage = 
-        `❌ [Direct] 错误：Master 文件不能是压缩包格式！\n` +
-        `文件名: ${this.filename}\n` +
-        `检测到的类型: ${detectedFileType} (压缩包)\n` +
-        `传入的类型: ${this.fileType} (master)\n\n` +
-        `Master 文件必须是 .speos 或 .sv5 文件。\n` +
-        `如果您上传的是 zip 文件，请：\n` +
-        `1. 将 .speos 或 .sv5 文件作为 Master 文件上传\n` +
-        `2. 将 zip 文件作为 Include 文件上传\n\n` +
-        `请检查您选择的 Master 文件是否正确。`;
-      
-      console.error(errorMessage);
-      throw new Error(`Master file cannot be an archive file. Found: ${this.filename}. Master file must be a .speos or .sv5 file.`);
+      console.warn(
+        `⚠️ [Direct] 文件类型可能不匹配（后端将自动修正）：\n` +
+        `  - 文件名: ${this.filename} (压缩包格式)\n` +
+        `  - 传入的 file_type: ${this.fileType} (master)\n` +
+        `  - 检测到的类型: ${detectedFileType} (include)\n` +
+        `  - 后端将自动将 file_type 修正为 "include" 并继续处理\n` +
+        `  - 建议：Master 文件应该是 .speos 或 .sv5 文件，zip 文件应作为 Include 文件上传`
+      );
+      // 不抛出错误，让后端自动修正
     }
     
+    // ❌ 如果 file_type="include" 但文件不是压缩包，必须阻止（后端会报错）
     if (this.fileType === "include" && detectedFileType === "master") {
       const errorMessage = 
         `❌ [Direct] 错误：Include 文件必须是压缩包格式！\n` +
         `文件名: ${this.filename}\n` +
         `检测到的类型: ${detectedFileType} (.speos/.sv5)\n` +
         `传入的类型: ${this.fileType} (include)\n\n` +
-        `Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）`;
+        `Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）\n` +
+        `如果这是 Master 文件，请选择正确的文件类型。`;
       
       console.error(errorMessage);
       throw new Error(`Include file must be an archive file. Found: ${this.filename}. Include file must be a .zip, .rar, .7z, .tar, .gz, or .tar.gz file.`);
+    }
+    
+    if (detectedFileType === this.fileType) {
+      console.log(`✅ [Direct] 文件类型匹配：文件名与 file_type 一致`);
     }
     
     // 如果已有 task_id，尝试加载进度
@@ -291,17 +299,21 @@ export class DirectResumableUploadManager {
     
     // 初始化新的分片上传
     console.log(`[Direct] 🚀 初始化分片上传: ${this.filename} (${this.formatBytes(this.file.size)})`);
-    console.log(`[Direct] 📋 文件信息:`);
+    console.log(`[Direct] 📋 请求信息:`);
     console.log(`  - 文件名: ${this.filename}`);
-    console.log(`  - 文件类型: ${this.fileType}`);
     console.log(`  - 文件大小: ${this.formatBytes(this.file.size)}`);
+    console.log(`  - 传入的 file_type: ${this.fileType}`);
     console.log(`  - 检测到的类型: ${detectedFileType}`);
-    console.log(`✅ [Direct] 文件类型验证通过：文件名与 file_type 匹配`);
+    
+    // 如果文件类型可能不匹配，记录提示信息
+    if (this.fileType === "master" && detectedFileType === "include") {
+      console.log(`ℹ️ [Direct] 注意：后端将自动将 file_type 从 "master" 修正为 "include"`);
+    }
     
     const initRequest: any = {
       filename: this.filename,
       file_size: this.file.size,
-      file_type: this.fileType,  // 使用纠正后的 file_type
+      file_type: this.fileType,  // 传入原始 file_type，后端会自动修正
       chunk_size: CHUNK_SIZE,
     };
     
