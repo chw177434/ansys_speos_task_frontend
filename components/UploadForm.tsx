@@ -640,11 +640,36 @@ export default function UploadForm() {
           if (key.startsWith("direct_upload_") && key.endsWith("_master")) {
             try {
               const data = JSON.parse(localStorage.getItem(key) || "{}");
-              // 匹配条件：文件名和大小相同
-              if (data.filename === masterFile.name && data.file_size === masterFile.size) {
+              
+              // ⚡ 严格匹配条件：文件名、大小、文件类型都必须匹配
+              const detectedSavedType = detectFileTypeFromFilename(data.filename);
+              const isValidMatch = 
+                data.filename === masterFile.name &&  // 文件名必须完全匹配
+                data.file_size === masterFile.size &&  // 文件大小必须匹配
+                data.file_type === "master" &&  // file_type 必须是 master
+                detectedSavedType === "master";  // 保存的文件名检测出的类型必须是 master
+              
+              if (isValidMatch) {
                 existingMasterTaskId = data.task_id;
                 existingMasterUploadId = data.upload_id;
-                console.log(`🔍 [Direct] 发现匹配的未完成上传: ${data.filename}, taskId=${existingMasterTaskId}`);
+                console.log(
+                  `✅ [Direct] 发现匹配的未完成上传:\n` +
+                  `  - 文件名: ${data.filename}\n` +
+                  `  - 文件大小: ${formatFileSize(data.file_size)}\n` +
+                  `  - 文件类型: ${data.file_type}\n` +
+                  `  - Task ID: ${existingMasterTaskId}`
+                );
+              } else {
+                // 如果匹配条件不完全满足，记录警告（可能是错误的记录）
+                if (data.filename === masterFile.name || data.file_size === masterFile.size) {
+                  console.warn(
+                    `⚠️ [Direct] 发现部分匹配但不完全匹配的上传记录（已忽略）：\n` +
+                    `  当前文件: ${masterFile.name} (${formatFileSize(masterFile.size)})\n` +
+                    `  保存记录: ${data.filename} (${formatFileSize(data.file_size)}, ${data.file_type})\n` +
+                    `  保存文件检测类型: ${detectedSavedType}\n` +
+                    `  将创建新的上传任务`
+                  );
+                }
               }
             } catch (error) {
               console.warn("[Direct] 解析上传进度失败", error);
@@ -698,10 +723,36 @@ export default function UploadForm() {
             if (key.startsWith("direct_upload_") && key.endsWith("_include")) {
               try {
                 const data = JSON.parse(localStorage.getItem(key) || "{}");
-                if (data.filename === includeFilename && data.file_size === includeArchive.size) {
+                
+                // ⚡ 严格匹配条件：文件名、大小、文件类型都必须匹配
+                const detectedSavedType = detectFileTypeFromFilename(data.filename);
+                const isValidMatch = 
+                  data.filename === includeFilename &&  // 文件名必须完全匹配
+                  data.file_size === includeArchive.size &&  // 文件大小必须匹配
+                  data.file_type === "include" &&  // file_type 必须是 include
+                  detectedSavedType === "include";  // 保存的文件名检测出的类型必须是 include
+                
+                if (isValidMatch) {
                   existingIncludeTaskId = data.task_id;
                   existingIncludeUploadId = data.upload_id;
-                  console.log(`🔍 [Direct] 发现匹配的未完成上传: ${data.filename}, taskId=${existingIncludeTaskId}`);
+                  console.log(
+                    `✅ [Direct] 发现匹配的未完成上传:\n` +
+                    `  - 文件名: ${data.filename}\n` +
+                    `  - 文件大小: ${formatFileSize(data.file_size)}\n` +
+                    `  - 文件类型: ${data.file_type}\n` +
+                    `  - Task ID: ${existingIncludeTaskId}`
+                  );
+                } else {
+                  // 如果匹配条件不完全满足，记录警告（可能是错误的记录）
+                  if (data.filename === includeFilename || data.file_size === includeArchive.size) {
+                    console.warn(
+                      `⚠️ [Direct] 发现部分匹配但不完全匹配的上传记录（已忽略）：\n` +
+                      `  当前文件: ${includeFilename} (${formatFileSize(includeArchive.size)})\n` +
+                      `  保存记录: ${data.filename} (${formatFileSize(data.file_size)}, ${data.file_type})\n` +
+                      `  保存文件检测类型: ${detectedSavedType}\n` +
+                      `  将创建新的上传任务`
+                    );
+                  }
                 }
               } catch (error) {
                 console.warn("[Direct] 解析上传进度失败", error);
