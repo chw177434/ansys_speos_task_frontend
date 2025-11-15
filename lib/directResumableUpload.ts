@@ -25,6 +25,37 @@ import {
   type DirectMultipartInitResponse,
 } from "./api";
 
+/**
+ * 根据文件名自动判断文件类型
+ * 
+ * 规则：
+ * - Master 文件：必须是 .speos 或 .sv5 文件
+ * - Include 文件：必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）
+ * 
+ * @param filename 文件名
+ * @returns "master" | "include"
+ */
+export function detectFileTypeFromFilename(filename: string): "master" | "include" {
+  const filenameLower = filename.toLowerCase();
+  
+  // 压缩包格式 → include
+  // 注意：先检查 .tar.gz（因为它是 .gz 的超集）
+  const archiveExts = ['.tar.gz', '.zip', '.rar', '.7z', '.tar', '.gz'];
+  for (const ext of archiveExts) {
+    if (filenameLower.endsWith(ext)) {
+      return 'include';
+    }
+  }
+  
+  // Master 文件格式 → master
+  if (filenameLower.endsWith('.speos') || filenameLower.endsWith('.sv5')) {
+    return 'master';
+  }
+  
+  // 默认返回 master（向后兼容）
+  return 'master';
+}
+
 export interface DirectResumableUploadOptions {
   file: File | Blob;
   filename: string;
@@ -199,10 +230,27 @@ export class DirectResumableUploadManager {
     // 初始化新的分片上传
     console.log(`[Direct] 🚀 初始化分片上传: ${this.filename} (${this.formatBytes(this.file.size)})`);
     
+    // ⚡ 根据文件名自动判断 file_type，如果与传入的不一致，自动纠正并给出警告
+    const detectedFileType = detectFileTypeFromFilename(this.filename);
+    if (detectedFileType !== this.fileType) {
+      console.warn(
+        `⚠️ [Direct] 文件类型不匹配！` +
+        `\n文件名: ${this.filename}` +
+        `\n传入的 file_type: ${this.fileType}` +
+        `\n检测到的 file_type: ${detectedFileType}` +
+        `\n自动纠正为: ${detectedFileType}` +
+        `\n\n规则说明：` +
+        `\n- Master 文件必须是 .speos 或 .sv5 文件` +
+        `\n- Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）`
+      );
+      // 自动纠正 file_type
+      this.fileType = detectedFileType;
+    }
+    
     const initRequest: any = {
       filename: this.filename,
       file_size: this.file.size,
-      file_type: this.fileType,
+      file_type: this.fileType,  // 使用纠正后的 file_type
       chunk_size: CHUNK_SIZE,
     };
     
