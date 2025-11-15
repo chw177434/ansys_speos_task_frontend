@@ -139,12 +139,34 @@ function outputsFromDownload(
 
 function normalizeOutputsResponse(response: TaskOutputsResponse, taskId: string): TaskOutput[] {
   const outputs: TaskOutput[] = [];
-  const seen = new Set<string>();
+  // ⚡ 使用两个 Set 分别去重：URL 和文件名
+  const seenUrls = new Set<string>();
+  const seenNames = new Set<string>();
 
   const addOutput = (url: string | null | undefined, name?: string | null) => {
     const absolute = buildOutputUrl(url, taskId);
-    if (!absolute || seen.has(absolute)) return;
-    seen.add(absolute);
+    if (!absolute) return;
+    
+    // 确定文件名
+    const fileName = (name?.trim() || fileNameFromPath(url) || DEFAULT_OUTPUT_NAME).toLowerCase();
+    
+    // ⚡ 去重：检查 URL 和文件名
+    // 如果 URL 已存在，跳过（同一文件）
+    if (seenUrls.has(absolute)) {
+      console.log(`[Outputs] 检测到重复 URL，跳过: ${absolute}`);
+      return;
+    }
+    
+    // ⚡ 如果文件名已存在，也跳过（避免同一文件的不同路径格式）
+    if (seenNames.has(fileName)) {
+      console.log(`[Outputs] 检测到重复文件名，跳过: ${fileName} (URL: ${absolute})`);
+      return;
+    }
+    
+    // 添加到集合中
+    seenUrls.add(absolute);
+    seenNames.add(fileName);
+    
     outputs.push({
       url: absolute,
       name: name?.trim() || fileNameFromPath(url) || DEFAULT_OUTPUT_NAME,
@@ -152,6 +174,13 @@ function normalizeOutputsResponse(response: TaskOutputsResponse, taskId: string)
   };
 
   const { files, file_entries, download_url, download_name } = response;
+  
+  console.log(`[Outputs] 解析输出文件响应:`, {
+    files_count: Array.isArray(files) ? files.length : 0,
+    file_entries_count: Array.isArray(file_entries) ? file_entries.length : 0,
+    has_download_url: !!download_url,
+  });
+  
   if (Array.isArray(files)) {
     files.forEach((entry) => {
       if (typeof entry === "string") {
@@ -179,18 +208,65 @@ function normalizeOutputsResponse(response: TaskOutputsResponse, taskId: string)
 
   addOutput(download_url ?? undefined, download_name ?? undefined);
 
+  console.log(`[Outputs] 标准化后共 ${outputs.length} 个输出文件:`, outputs.map(o => o.name));
+  
   return outputs;
 }
 
-function mergeOutputs(existing: TaskOutput[], extras: TaskOutput[]): TaskOutput[] {
+/**
+ * 增强的去重合并逻辑：基于 URL 和文件名去重
+ * 如果 URL 不同但文件名相同，也视为重复（避免同一文件的不同路径格式）
+ */
+function mergeOutputsEnhanced(existing: TaskOutput[], extras: TaskOutput[]): TaskOutput[] {
   if (extras.length === 0) return existing;
-  const map = new Map<string, TaskOutput>();
-  [...existing, ...extras].forEach((item) => {
-    if (item.url) {
-      map.set(item.url, item);
+  
+  // ⚡ 使用 Map，key 为 URL，value 为 TaskOutput
+  const urlMap = new Map<string, TaskOutput>();
+  
+  // ⚡ 使用 Map 存储文件名到 URL 的映射，用于检测文件名重复
+  const nameToUrlMap = new Map<string, string>();
+  
+  // 首先处理现有的输出
+  existing.forEach((item) => {
+    if (item.url && item.name) {
+      urlMap.set(item.url, item);
+      // 记录文件名映射（如果文件名还没有对应的 URL，或者当前 URL 更短，优先使用更短的 URL）
+      const existingUrl = nameToUrlMap.get(item.name);
+      if (!existingUrl || item.url.length < existingUrl.length) {
+        nameToUrlMap.set(item.name, item.url);
+      }
     }
   });
-  return Array.from(map.values());
+  
+  // 然后处理新获取的输出
+  extras.forEach((item) => {
+    if (!item.url || !item.name) return;
+    
+    // 检查是否已经存在相同的 URL
+    if (urlMap.has(item.url)) {
+      // 已存在相同 URL，跳过（保留现有的）
+      return;
+    }
+    
+    // 检查是否已经存在相同的文件名（避免同一文件的不同路径格式）
+    const existingUrl = nameToUrlMap.get(item.name);
+    if (existingUrl && existingUrl !== item.url) {
+      // 已存在相同文件名但不同 URL，跳过（保留现有的）
+      console.log(`[Outputs] 检测到重复文件名 "${item.name}"，保留现有 URL: ${existingUrl}，跳过: ${item.url}`);
+      return;
+    }
+    
+    // 添加新的输出
+    urlMap.set(item.url, item);
+    nameToUrlMap.set(item.name, item.url);
+  });
+  
+  return Array.from(urlMap.values());
+}
+
+// 保留旧函数以保持兼容性
+function mergeOutputs(existing: TaskOutput[], extras: TaskOutput[]): TaskOutput[] {
+  return mergeOutputsEnhanced(existing, extras);
 }
 
 function sliceRows(rows: TableTask[], page: number, size: number): TableTask[] {
@@ -610,8 +686,20 @@ export default function TasksTable() {
     []
   );
 
+  // ⚡ 使用 ref 存储正在获取输出的任务，避免重复调用
+  const fetchingOutputsRef = useRef<Set<string>>(new Set());
+
   const fetchOutputsForTask = useCallback(
     async (taskId: string) => {
+      // ⚡ 防止重复调用：如果正在获取中，直接返回
+      if (fetchingOutputsRef.current.has(taskId)) {
+        console.log(`[Outputs] 任务 ${taskId} 的输出文件正在获取中，跳过重复调用`);
+        return;
+      }
+
+      // 标记为正在获取
+      fetchingOutputsRef.current.add(taskId);
+
       applyTaskUpdate(taskId, (task) => ({
         ...task,
         outputsLoading: true,
@@ -620,21 +708,37 @@ export default function TasksTable() {
 
       try {
         const response = await listOutputs(taskId);
+        console.log(`[Outputs] 任务 ${taskId} 的输出文件列表:`, response);
+        
         const normalized = normalizeOutputsResponse(response, taskId);
-        applyTaskUpdate(taskId, (task) => ({
-          ...task,
-          outputs: mergeOutputs(task.outputs, normalized),
-          outputsFetched: true,
-          outputsLoading: false,
-        }));
+        console.log(`[Outputs] 任务 ${taskId} 标准化后的输出文件:`, normalized);
+        
+        // ⚡ 重要：直接替换而不是合并，避免重复
+        // 因为 listOutputs 接口已经返回了完整的文件列表
+        applyTaskUpdate(taskId, (task) => {
+          // 使用增强的去重逻辑合并现有和新获取的输出
+          const merged = mergeOutputsEnhanced(task.outputs, normalized);
+          console.log(`[Outputs] 任务 ${taskId} 合并后的输出文件 (${merged.length} 个):`, merged.map(o => o.name));
+          
+          return {
+            ...task,
+            outputs: merged,
+            outputsFetched: true,
+            outputsLoading: false,
+          };
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : "获取输出失败";
+        console.error(`[Outputs] 任务 ${taskId} 获取输出失败:`, err);
         applyTaskUpdate(taskId, (task) => ({
           ...task,
           outputsFetched: true,
           outputsLoading: false,
           outputsError: message,
         }));
+      } finally {
+        // 清除标记
+        fetchingOutputsRef.current.delete(taskId);
       }
     },
     [applyTaskUpdate]
