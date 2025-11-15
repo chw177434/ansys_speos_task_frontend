@@ -229,22 +229,59 @@ export class DirectResumableUploadManager {
     
     // 初始化新的分片上传
     console.log(`[Direct] 🚀 初始化分片上传: ${this.filename} (${this.formatBytes(this.file.size)})`);
+    console.log(`[Direct] 📋 文件信息:`);
+    console.log(`  - 文件名: ${this.filename}`);
+    console.log(`  - 文件类型: ${this.fileType}`);
+    console.log(`  - 文件大小: ${this.formatBytes(this.file.size)}`);
     
-    // ⚡ 根据文件名自动判断 file_type，如果与传入的不一致，自动纠正并给出警告
+    // ⚡ 根据文件名自动判断 file_type，如果与传入的不一致，需要处理
     const detectedFileType = detectFileTypeFromFilename(this.filename);
+    console.log(`[Direct] 🔍 文件类型检测:`);
+    console.log(`  - 根据文件名检测到的类型: ${detectedFileType}`);
+    console.log(`  - 传入的文件类型: ${this.fileType}`);
+    
     if (detectedFileType !== this.fileType) {
+      // 如果是 master 文件但文件名是压缩包，这是严重错误，应该抛出错误而不是自动纠正
+      if (this.fileType === "master" && detectedFileType === "include") {
+        const errorMessage = 
+          `❌ [Direct] 错误：Master 文件不能是压缩包格式！\n` +
+          `文件名: ${this.filename}\n` +
+          `检测到的类型: ${detectedFileType} (压缩包)\n` +
+          `传入的类型: ${this.fileType} (master)\n\n` +
+          `Master 文件必须是 .speos 或 .sv5 文件。\n` +
+          `如果您上传的是 zip 文件，请：\n` +
+          `1. 将 .speos 或 .sv5 文件作为 Master 文件上传\n` +
+          `2. 将 zip 文件作为 Include 文件上传\n\n` +
+          `请检查您选择的 Master 文件是否正确。`;
+        
+        console.error(errorMessage);
+        throw new Error(`Master file cannot be an archive file. Found: ${this.filename}. Master file must be a .speos or .sv5 file.`);
+      }
+      
+      // 如果是 include 文件但文件名不是压缩包，也抛出错误
+      if (this.fileType === "include" && detectedFileType === "master") {
+        const errorMessage = 
+          `❌ [Direct] 错误：Include 文件必须是压缩包格式！\n` +
+          `文件名: ${this.filename}\n` +
+          `检测到的类型: ${detectedFileType} (.speos/.sv5)\n` +
+          `传入的类型: ${this.fileType} (include)\n\n` +
+          `Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）`;
+        
+        console.error(errorMessage);
+        throw new Error(`Include file must be an archive file. Found: ${this.filename}. Include file must be a .zip, .rar, .7z, .tar, .gz, or .tar.gz file.`);
+      }
+      
+      // 其他情况（默认纠正）
       console.warn(
-        `⚠️ [Direct] 文件类型不匹配！` +
+        `⚠️ [Direct] 文件类型不匹配，自动纠正：` +
         `\n文件名: ${this.filename}` +
         `\n传入的 file_type: ${this.fileType}` +
         `\n检测到的 file_type: ${detectedFileType}` +
-        `\n自动纠正为: ${detectedFileType}` +
-        `\n\n规则说明：` +
-        `\n- Master 文件必须是 .speos 或 .sv5 文件` +
-        `\n- Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）`
+        `\n自动纠正为: ${detectedFileType}`
       );
-      // 自动纠正 file_type
       this.fileType = detectedFileType;
+    } else {
+      console.log(`✅ [Direct] 文件类型验证通过：文件名与 file_type 匹配`);
     }
     
     const initRequest: any = {

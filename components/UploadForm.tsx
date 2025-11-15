@@ -29,6 +29,7 @@ import {
 } from "../lib/resumableUpload";
 import {
   uploadFileWithDirectResumable,
+  detectFileTypeFromFilename,
   type DirectUploadProgressInfo,
 } from "../lib/directResumableUpload";
 
@@ -585,6 +586,50 @@ export default function UploadForm() {
     let includeFilePath: string | null = null;
 
     try {
+      // ⚡ 步骤 0.5: 验证文件类型（在开始上传前检查，立即发现错误）
+      console.log(`[Direct] 📋 验证文件类型:`);
+      console.log(`  - Master 文件名: ${masterFile.name}`);
+      console.log(`  - Master 文件大小: ${formatFileSize(masterFile.size)}`);
+      
+      const detectedMasterType = detectFileTypeFromFilename(masterFile.name);
+      console.log(`  - 检测到的 Master 类型: ${detectedMasterType}`);
+      
+      if (detectedMasterType !== "master") {
+        const errorMsg = 
+          `❌ Master 文件类型错误！\n\n` +
+          `文件名: ${masterFile.name}\n` +
+          `检测到的类型: ${detectedMasterType} (${detectedMasterType === "include" ? "压缩包" : "未知"})\n\n` +
+          `Master 文件必须是 .speos 或 .sv5 文件，不能是压缩包格式。\n\n` +
+          `请检查您选择的 Master 文件是否正确。\n` +
+          `如果您选择了 zip 文件，请：\n` +
+          `1. 选择 .speos 或 .sv5 文件作为 Master 文件\n` +
+          `2. 将 zip 文件作为 Include 文件上传`;
+        
+        console.error(errorMsg);
+        throw new Error(`Master file cannot be an archive file. Found: ${masterFile.name}. Master file must be a .speos or .sv5 file.`);
+      }
+      
+      if (includeArchive) {
+        console.log(`  - Include 文件名: ${includeArchive.name}`);
+        console.log(`  - Include 文件大小: ${formatFileSize(includeArchive.size)}`);
+        
+        const detectedIncludeType = detectFileTypeFromFilename(includeArchive.name);
+        console.log(`  - 检测到的 Include 类型: ${detectedIncludeType}`);
+        
+        if (detectedIncludeType !== "include") {
+          const errorMsg = 
+            `❌ Include 文件类型错误！\n\n` +
+            `文件名: ${includeArchive.name}\n` +
+            `检测到的类型: ${detectedIncludeType} (.speos/.sv5)\n\n` +
+            `Include 文件必须是压缩包格式（.zip, .rar, .7z, .tar, .gz, .tar.gz）`;
+          
+          console.error(errorMsg);
+          throw new Error(`Include file must be an archive file. Found: ${includeArchive.name}. Include file must be a .zip, .rar, .7z, .tar, .gz, or .tar.gz file.`);
+        }
+      }
+      
+      console.log(`✅ [Direct] 文件类型验证通过`);
+
       // 步骤 0: 检查是否有未完成的上传（智能匹配）
       let existingMasterTaskId: string | undefined;
       let existingMasterUploadId: string | undefined;
