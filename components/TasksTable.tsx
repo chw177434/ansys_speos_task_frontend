@@ -893,28 +893,48 @@ export default function TasksTable() {
           typeof (data as { total?: number }).total === "number" ||
           typeof (data as { count?: number }).count === "number";
 
+        // ⚡ 重要：在设置 state 之前，合并现有的 progress_info
+        // 如果列表接口返回的任务没有 progress_info，但 ref 中有，则保留 ref 中的
+        // 使用 ref 而不是 state，因为 ref 总是最新的
+        const mergedRows = rowsFromServer.map((newTask) => {
+          const existingTask = currentTaskMap.get(newTask.task_id);
+          // 如果新任务没有 progress_info，但现有任务有，则保留现有的
+          if (!newTask.progress_info && existingTask?.progress_info) {
+            return { ...newTask, progress_info: existingTask.progress_info };
+          }
+          return newTask;
+        });
+        
         if (supportsServerPaging) {
           setPagingMode("server");
           setAllRows(null);
-          setRows(rowsFromServer);
+          setRows(mergedRows);
           setPage(serverPage);
           setPageSize(serverSize);
           setTotal(totalCount);
         } else {
           setPagingMode("client");
-          setAllRows(rowsFromServer);
-          setTotal(rowsFromServer.length);
+          setAllRows(mergedRows);
+          setTotal(mergedRows.length);
           setPage(targetPage);
           setPageSize(targetSize);
-          setRows(sliceRows(rowsFromServer, targetPage, targetSize));
+          setRows(sliceRows(mergedRows, targetPage, targetSize));
         }
         
         // ✅ 更新 ref 中的任务状态（在状态更新后）
-        // 注意：这里使用 rowsFromServer 而不是 state，因为 state 更新是异步的
-        currentTaskMap.clear();
-        rowsFromServer.forEach((task) => {
+        // 注意：使用 mergedRows 而不是 rowsFromServer，确保 ref 和 state 一致
+        // ⚡ 重要：mergedRows 已经包含了合并后的 progress_info
+        mergedRows.forEach((task) => {
           currentTaskMap.set(task.task_id, task);
         });
+        
+        // 清理不存在的任务（已删除的任务）
+        const serverTaskIds = new Set(mergedRows.map(t => t.task_id));
+        for (const [taskId] of currentTaskMap) {
+          if (!serverTaskIds.has(taskId)) {
+            currentTaskMap.delete(taskId);
+          }
+        }
         
         // ✅ 立即为刚完成的任务获取输出文件（不等待 useEffect）
         // 使用 setTimeout 确保状态已更新后再获取输出文件
