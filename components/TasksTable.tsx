@@ -650,6 +650,20 @@ export default function TasksTable() {
     }
     return rows;
   }, [isClientPaging, allRows, rows]);
+  
+  // 调试：检查 baseRows 中的 progress_info
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      const tasksWithProgress = baseRows.filter((task) => task.progress_info);
+      if (tasksWithProgress.length > 0) {
+        console.log("[Debug] baseRows 中有进度信息的任务:", tasksWithProgress.map(t => ({
+          id: t.task_id,
+          status: t.status,
+          progress_info: t.progress_info,
+        })));
+      }
+    }
+  }, [baseRows]);
 
   const filteredRows = useMemo(() => {
     const normalizedName = nameFilter.trim().toLowerCase();
@@ -696,10 +710,38 @@ export default function TasksTable() {
 
   const applyTaskUpdate = useCallback(
     (taskId: string, updater: (task: TableTask) => TableTask) => {
-      setRows((current) => current.map((task) => (task.task_id === taskId ? updater(task) : task)));
-      setAllRows((current) =>
-        current ? current.map((task) => (task.task_id === taskId ? updater(task) : task)) : current
-      );
+      // ✅ 先从 ref 获取当前任务（可能不在当前页）
+      const currentTask = currentTasksRef.current.get(taskId);
+      if (!currentTask) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(`[applyTaskUpdate] 任务 ${taskId} 不在 ref 中，跳过更新`);
+        }
+        return;
+      }
+      
+      // ✅ 更新任务
+      const updatedTask = updater(currentTask);
+      
+      // ✅ 先更新 ref（确保 ref 始终是最新的）
+      currentTasksRef.current.set(taskId, updatedTask);
+      
+      // ✅ 然后更新 state（如果任务在 state 中）
+      setRows((current) => {
+        const taskIndex = current.findIndex((t) => t.task_id === taskId);
+        if (taskIndex >= 0) {
+          return current.map((task) => (task.task_id === taskId ? updatedTask : task));
+        }
+        return current;
+      });
+      
+      setAllRows((current) => {
+        if (!current) return current;
+        const taskIndex = current.findIndex((t) => t.task_id === taskId);
+        if (taskIndex >= 0) {
+          return current.map((task) => (task.task_id === taskId ? updatedTask : task));
+        }
+        return current;
+      });
     },
     []
   );
@@ -929,6 +971,14 @@ export default function TasksTable() {
         const statusChanged = oldTask && oldTask.status !== newStatus;
         
         // 更新任务的 progress_info 和状态
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[Progress] 更新任务 ${taskId} 的进度信息:`, {
+            status: newStatus,
+            progress_info: data.progress_info,
+            hasProgressInfo: !!data.progress_info,
+          });
+        }
+        
         applyTaskUpdate(taskId, (task) => ({
           ...task,
           status: newStatus || task.status,
@@ -998,8 +1048,21 @@ export default function TasksTable() {
       runningStatuses.includes(task.status) || pendingStatuses.includes(task.status)
     );
 
+    // 调试日志：帮助排查问题
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Polling] 检查轮询任务:", {
+        totalTasks: allTasks.length,
+        tasksToPoll: tasksToPoll.length,
+        taskIds: tasksToPoll.map(t => ({ id: t.task_id, status: t.status })),
+        tasksToPollIds,
+      });
+    }
+
     // 如果没有需要轮询的任务，直接返回
     if (tasksToPoll.length === 0) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[Polling] 没有需要轮询的任务，停止轮询");
+      }
       return undefined;
     }
 
@@ -1015,6 +1078,9 @@ export default function TasksTable() {
       const pollInterval = isRunning ? 30000 : 60000;
 
       // 立即执行一次（不等待第一个间隔）
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[Polling] 立即获取任务 ${task.task_id} 的进度信息`);
+      }
       void fetchProgressForTask(task.task_id);
 
       // 设置定时轮询
