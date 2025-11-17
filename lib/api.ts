@@ -61,7 +61,7 @@ export interface CreateTaskResponse {
 
 // SPEOS 任务执行进度信息（后端实时捕获）
 export interface ProgressInfo {
-  estimated_time?: string | null;      // ⏱️ 剩余时间，如 "20 minutes"
+  estimated_time?: string | null;      // ⏱️ 剩余时间，如 "5 days 14 hours" | "14 hours" | "19 minutes"
   progress_percent?: number | null;    // 📊 总体进度百分比，0-100
   current_step?: string | null;        // 当前步骤，如 "10/10"（旧版兼容）
   current_pass?: number | null;        // 🔄 当前 Pass
@@ -563,6 +563,83 @@ export function formatProgressPercent(percent: number | null | undefined): strin
 }
 
 /**
+ * 格式化 estimated_time 字符串为中文显示
+ * 支持后端返回的所有时间格式：
+ * - "5 days 14 hours" / "4 days 1 hours 30 min"
+ * - "4 days 57 min" / "4 days 30 minutes"
+ * - "5 days" / "3 days" / "1 day"
+ * - "14 hours" / "2.5 hours"
+ * - "19 minutes" / "45 minutes"
+ * 
+ * @param estimatedTime 后端返回的时间字符串
+ * @returns 格式化后的中文时间字符串
+ */
+export function formatEstimatedTime(estimatedTime: string | null | undefined): string {
+  if (!estimatedTime || !estimatedTime.trim()) {
+    return "计算中...";
+  }
+
+  const trimmed = estimatedTime.trim();
+
+  // 匹配 "X days Y hours Z min" 或 "X days Y hours"
+  const daysHoursMinMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?(?:\s+(\d+)\s+min)?/i);
+  if (daysHoursMinMatch) {
+    const days = parseInt(daysHoursMinMatch[1], 10);
+    const hours = parseInt(daysHoursMinMatch[2], 10);
+    const minutes = daysHoursMinMatch[3] ? parseInt(daysHoursMinMatch[3], 10) : 0;
+    if (minutes > 0) {
+      return `${days}天${hours}小时${minutes}分钟`;
+    }
+    return `${days}天${hours}小时`;
+  }
+
+  // 匹配 "X days Y min" 或 "X days Y minutes"
+  const daysMinMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+min(?:utes)?/i);
+  if (daysMinMatch) {
+    const days = parseInt(daysMinMatch[1], 10);
+    const minutes = parseInt(daysMinMatch[2], 10);
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      if (remainingMinutes > 0) {
+        return `${days}天${hours}小时${remainingMinutes}分钟`;
+      }
+      return `${days}天${hours}小时`;
+    }
+    return `${days}天${minutes}分钟`;
+  }
+
+  // 匹配 "X days" 格式（只有天）
+  const daysMatch = trimmed.match(/(\d+)\s+days?/i);
+  if (daysMatch) {
+    const days = parseInt(daysMatch[1], 10);
+    return `${days}天`;
+  }
+
+  // 匹配 "X hours" 格式（只有小时，支持浮点数）
+  const hoursMatch = trimmed.match(/(\d+(?:\.\d+)?)\s+hours?/i);
+  if (hoursMatch) {
+    const hours = parseFloat(hoursMatch[1]);
+    if (hours >= 1) {
+      return `${Math.round(hours)}小时`;
+    } else {
+      const minutes = Math.round(hours * 60);
+      return `${minutes}分钟`;
+    }
+  }
+
+  // 匹配 "X minutes" 格式（只有分钟）
+  const minutesMatch = trimmed.match(/(\d+)\s+minutes?/i);
+  if (minutesMatch) {
+    const minutes = parseInt(minutesMatch[1], 10);
+    return `${minutes}分钟`;
+  }
+
+  // 如果都不匹配，直接返回原字符串（向后兼容）
+  return trimmed;
+}
+
+/**
  * 从 Celery 任务结果中提取进度信息的辅助函数
  * @param result Celery 任务结果对象
  * @returns 进度信息对象或 null
@@ -610,7 +687,7 @@ export function getProgressSummary(progressInfo: ProgressInfo | null | undefined
   }
   
   if (progressInfo.estimated_time) {
-    parts.push(`预计 ${progressInfo.estimated_time}`);
+    parts.push(`预计 ${formatEstimatedTime(progressInfo.estimated_time)}`);
   }
   
   return parts.length > 0 ? parts.join(", ") : "-";
