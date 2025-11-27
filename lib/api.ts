@@ -564,12 +564,14 @@ export function formatProgressPercent(percent: number | null | undefined): strin
 
 /**
  * 格式化 estimated_time 字符串为中文显示
- * 支持后端返回的所有时间格式：
- * - "5 days 14 hours" / "4 days 1 hours 30 min"
- * - "4 days 57 min" / "4 days 30 minutes"
- * - "5 days" / "3 days" / "1 day"
- * - "14 hours" / "2.5 hours"
- * - "19 minutes" / "45 minutes"
+ * 支持后端返回的所有时间格式（支持单复数：day/days, hour/hours）：
+ * - "1 day 1 hour 22 min" / "2 days 3 hours 30 min"（天+小时+分钟）
+ * - "1 day 1 hour" / "2 days 3 hours"（天+小时）
+ * - "1 day 22 min" / "2 days 30 min"（天+分钟）
+ * - "1 day" / "2 days"（只有天）
+ * - "1 hour 22 min" / "2 hours 30 min"（小时+分钟）
+ * - "14 hours" / "2.5 hours"（只有小时）
+ * - "19 minutes" / "45 minutes"（只有分钟）
  * 
  * @param estimatedTime 后端返回的时间字符串
  * @returns 格式化后的中文时间字符串
@@ -581,20 +583,28 @@ export function formatEstimatedTime(estimatedTime: string | null | undefined): s
 
   const trimmed = estimatedTime.trim();
 
-  // 匹配 "X days Y hours Z min" 或 "X days Y hours"
-  const daysHoursMinMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?(?:\s+(\d+)\s+min)?/i);
+  // 匹配 "X day(s) Y hour(s) Z min" 格式（天+小时+分钟）
+  // 例如: "1 day 1 hour 22 min", "2 days 3 hours 30 min"
+  const daysHoursMinMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?\s+(\d+)\s+min/i);
   if (daysHoursMinMatch) {
     const days = parseInt(daysHoursMinMatch[1], 10);
     const hours = parseInt(daysHoursMinMatch[2], 10);
-    const minutes = daysHoursMinMatch[3] ? parseInt(daysHoursMinMatch[3], 10) : 0;
-    if (minutes > 0) {
-      return `${days}天${hours}小时${minutes}分钟`;
-    }
+    const minutes = parseInt(daysHoursMinMatch[3], 10);
+    return `${days}天${hours}小时${minutes}分钟`;
+  }
+
+  // 匹配 "X day(s) Y hour(s)" 格式（天+小时，没有分钟）
+  // 例如: "1 day 1 hour", "2 days 3 hours"
+  const daysHoursMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?/i);
+  if (daysHoursMatch) {
+    const days = parseInt(daysHoursMatch[1], 10);
+    const hours = parseInt(daysHoursMatch[2], 10);
     return `${days}天${hours}小时`;
   }
 
-  // 匹配 "X days Y min" 或 "X days Y minutes"
-  const daysMinMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+min(?:utes)?/i);
+  // 匹配 "X day(s) Y min" 格式（天+分钟，没有小时）
+  // 例如: "1 day 22 min", "2 days 30 min"
+  const daysMinMatch = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+min/i);
   if (daysMinMatch) {
     const days = parseInt(daysMinMatch[1], 10);
     const minutes = parseInt(daysMinMatch[2], 10);
@@ -609,11 +619,21 @@ export function formatEstimatedTime(estimatedTime: string | null | undefined): s
     return `${days}天${minutes}分钟`;
   }
 
-  // 匹配 "X days" 格式（只有天）
+  // 匹配 "X day(s)" 格式（只有天）
+  // 例如: "1 day", "2 days"
   const daysMatch = trimmed.match(/(\d+)\s+days?/i);
   if (daysMatch) {
     const days = parseInt(daysMatch[1], 10);
     return `${days}天`;
+  }
+
+  // 匹配 "X hour(s) Y min" 格式（小时+分钟，没有天）
+  // 例如: "1 hour 22 min", "2 hours 30 min"
+  const hoursMinMatch = trimmed.match(/(\d+)\s+hours?\s+(\d+)\s+min/i);
+  if (hoursMinMatch) {
+    const hours = parseInt(hoursMinMatch[1], 10);
+    const minutes = parseInt(hoursMinMatch[2], 10);
+    return `${hours}小时${minutes}分钟`;
   }
 
   // 匹配 "X hours" 格式（只有小时，支持浮点数）
