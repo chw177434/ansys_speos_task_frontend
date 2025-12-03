@@ -42,11 +42,11 @@ export default function ToolSelection({ tools }: ToolSelectionProps) {
     <div className="mx-auto flex max-w-6xl flex-col gap-8 py-12">
       <header className="space-y-3">
         <p className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-          远程异步求解工具台
+          远程异步求解工具台 v2.1.0
         </p>
-        <h1 className="text-3xl font-bold text-gray-900">请选择需要使用的 Ansys 工具</h1>
-        <p className="max-w-2xl text-sm text-gray-600">
-          根据业务场景选择不同的仿真工具，进入后即可配置任务参数、上传模型文件并提交远程求解。
+        <h1 className="text-3xl font-bold text-gray-900">请选择需要使用的 Ansys 求解器</h1>
+        <p className="max-w-4xl text-sm text-gray-600">
+          支持 4 种 ANSYS 求解器（💡 SPEOS 光学、🌊 FLUENT 流体、⚡ Maxwell 电磁、🔧 Mechanical 结构），选择后即可配置任务参数、上传模型文件并提交远程求解。
         </p>
         {lastTool && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">

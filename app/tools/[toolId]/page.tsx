@@ -22,7 +22,16 @@ export default async function ToolPage({ params }: ToolPageProps) {
   }
 
   const isAvailable = tool.status === "available";
-  const isSpeos = tool.id === "speos";
+  
+  // 求解器图标和颜色映射
+  const solverConfig: Record<string, { icon: string; color: string }> = {
+    speos: { icon: "💡", color: "border-yellow-200 bg-yellow-50 text-yellow-700" },
+    fluent: { icon: "🌊", color: "border-blue-200 bg-blue-50 text-blue-700" },
+    maxwell: { icon: "⚡", color: "border-purple-200 bg-purple-50 text-purple-700" },
+    mechanical: { icon: "🔧", color: "border-green-200 bg-green-50 text-green-700" },
+  };
+  
+  const currentSolver = solverConfig[tool.id] || { icon: "📊", color: "border-gray-200 bg-gray-50 text-gray-700" };
 
   return (
     <main className="min-h-screen bg-gray-50 p-6 sm:p-10">
@@ -44,24 +53,25 @@ export default async function ToolPage({ params }: ToolPageProps) {
 
         <header className="space-y-3 rounded-2xl bg-white p-6 shadow">
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-gray-900">{tool.name}</h1>
+            <div className="flex items-center gap-3">
+              <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-lg font-medium ${currentSolver.color}`}>
+                <span>{currentSolver.icon}</span>
+              </span>
+              <h1 className="text-3xl font-bold text-gray-900">{tool.name}</h1>
+            </div>
             {tool.detail && <p className="text-sm text-gray-600">{tool.detail}</p>}
           </div>
           <p className="text-sm text-gray-500">{tool.description}</p>
         </header>
 
         {isAvailable ? (
-          isSpeos ? (
-            <>
-              <UploadForm />
-              <TasksTable />
-            </>
-          ) : (
-            <section className="rounded-2xl bg-white p-10 text-center shadow">
-              <p className="text-lg font-semibold text-slate-800">该工具的配置尚未启用</p>
-              <p className="mt-2 text-sm text-slate-500">如需体验，请联系产品团队确认 {tool.name} 的前端接入计划。</p>
-            </section>
-          )
+          <>
+            <UploadForm 
+              defaultSolverType={tool.id as "speos" | "fluent" | "maxwell" | "mechanical"} 
+              lockSolverType={true}
+            />
+            <TasksTable />
+          </>
         ) : (
           <section className="rounded-2xl bg-white p-10 text-center shadow">
             <p className="text-lg font-semibold text-slate-800">功能规划中</p>

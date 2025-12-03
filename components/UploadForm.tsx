@@ -111,7 +111,12 @@ const PRIORITY_OPTIONS = [
   { value: "5", label: "5 - 实时" },
 ];
 
-export default function UploadForm() {
+interface UploadFormProps {
+  defaultSolverType?: SolverType;
+  lockSolverType?: boolean; // 是否锁定求解器类型（从页面入口进入时锁定）
+}
+
+export default function UploadForm({ defaultSolverType = "speos", lockSolverType = false }: UploadFormProps = {}) {
   const initialState = useMemo(() => loadFormState(), []);
   const [profileName, setProfileName] = useState(initialState.profileName);
   const [version, setVersion] = useState(initialState.version);
@@ -128,8 +133,8 @@ export default function UploadForm() {
   const [nodeCount, setNodeCount] = useState(initialState.nodeCount ?? "1");
   const [walltimeHours, setWalltimeHours] = useState(initialState.walltimeHours ?? "");
   
-  // ⭐ 新增：求解器类型选择（默认 SPEOS）
-  const [solverType, setSolverType] = useState<SolverType>("speos");
+  // ⭐ 新增：求解器类型选择（使用传入的默认值或 SPEOS）
+  const [solverType, setSolverType] = useState<SolverType>(defaultSolverType);
   
   // ⭐ 新增：FLUENT 参数
   const [dimension, setDimension] = useState<"2d" | "3d">("3d");
@@ -1754,12 +1759,41 @@ export default function UploadForm() {
     }
   };
 
+  // 求解器配置信息
+  const solverConfigs = {
+    speos: {
+      title: "提交 SPEOS 任务",
+      description: "填写任务信息并上传 Master File（必选）与 Include 压缩包（可选），提交后任务会自动出现在右侧列表中。",
+      icon: "💡",
+    },
+    fluent: {
+      title: "提交 FLUENT 任务",
+      description: "填写任务信息并上传 .cas 或 .cas.h5 文件（必选）与 Include 文件（可选），配置 CFD 仿真参数。",
+      icon: "🌊",
+    },
+    maxwell: {
+      title: "提交 Maxwell 任务",
+      description: "填写任务信息并上传 .aedt 项目文件（必选），配置电磁场仿真参数。",
+      icon: "⚡",
+    },
+    mechanical: {
+      title: "提交 Mechanical 任务",
+      description: "填写任务信息并上传 .dat 或 .inp 文件（必选），配置结构力学仿真参数。",
+      icon: "🔧",
+    },
+  };
+  
+  const currentConfig = solverConfigs[solverType];
+
   return (
     <section className="flex h-full flex-col gap-6 rounded-2xl bg-white p-6 shadow-lg ring-1 ring-black/5">
       <header className="space-y-1">
-        <h2 className="text-2xl font-semibold text-slate-900">提交 SPEOS 任务</h2>
+        <h2 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
+          <span>{currentConfig.icon}</span>
+          <span>{currentConfig.title}</span>
+        </h2>
         <p className="text-sm text-slate-500">
-          填写任务信息并上传 Master File（必选）与 Include 压缩包（可选），提交后任务会自动出现在右侧列表中。
+          {currentConfig.description}
         </p>
       </header>
 
@@ -1958,23 +1992,47 @@ export default function UploadForm() {
             />
           </div>
           
-          {/* ⭐ 新增：求解器类型选择 */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">求解器类型</label>
-            <select
-              value={solverType}
-              onChange={(event) => setSolverType(event.target.value as SolverType)}
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="speos">💡 SPEOS - 光学仿真</option>
-              <option value="fluent">🌊 FLUENT - 流体力学</option>
-              <option value="maxwell">⚡ Maxwell - 电磁场</option>
-              <option value="mechanical">🔧 Mechanical - 结构力学</option>
-            </select>
-            <p className="mt-1 text-xs text-gray-500">
-              选择要使用的 ANSYS 求解器类型
-            </p>
-          </div>
+          {/* ⭐ 求解器类型选择（仅在未锁定时显示）*/}
+          {!lockSolverType && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">求解器类型</label>
+              <select
+                value={solverType}
+                onChange={(event) => setSolverType(event.target.value as SolverType)}
+                className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="speos">💡 SPEOS - 光学仿真</option>
+                <option value="fluent">🌊 FLUENT - 流体力学</option>
+                <option value="maxwell">⚡ Maxwell - 电磁场</option>
+                <option value="mechanical">🔧 Mechanical - 结构力学</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                选择要使用的 ANSYS 求解器类型
+              </p>
+            </div>
+          )}
+          
+          {/* ⭐ 锁定时显示当前求解器信息 */}
+          {lockSolverType && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">求解器类型</label>
+              <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-gray-50 px-3 py-2">
+                <span className="text-lg">{currentConfig.icon}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {solverType === "speos" && "SPEOS - 光学仿真"}
+                  {solverType === "fluent" && "FLUENT - 流体力学"}
+                  {solverType === "maxwell" && "Maxwell - 电磁场"}
+                  {solverType === "mechanical" && "Mechanical - 结构力学"}
+                </span>
+                <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                  已选定
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                当前页面已锁定为此求解器类型
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Master File 文件（必选）</label>
