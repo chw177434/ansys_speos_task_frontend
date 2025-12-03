@@ -10,6 +10,7 @@ import {
   type TaskOutputsResponse,
   type ProgressInfo,
   type RetryTaskResponse,
+  type SolverType,
 } from "../lib/api";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -51,10 +52,11 @@ interface RawTask {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
-  progress_info?: ProgressInfo | null; // ✅ SPEOS 执行进度信息
+  progress_info?: ProgressInfo | null; // ✅ 执行进度信息（多求解器）
   parent_task_id?: string | null; // ✅ 父任务ID（如果是重试任务）
   retry_count?: number | null; // ✅ 重试次数
   retried_task_ids?: string[] | null; // ✅ 重试生成的任务列表
+  solver_type?: SolverType | null; // ⭐ 新增：求解器类型
 }
 
 interface TaskOutput {
@@ -352,9 +354,47 @@ function formatProgressPercent(percent: number | null | undefined): string {
   return `${Math.round(percent)}%`;
 }
 
+// ============= 求解器相关工具函数 =============
 
-// 渲染进度信息组件（优雅显示）
-function renderProgressInfo(progressInfo: ProgressInfo | null | undefined): JSX.Element | null {
+// 获取求解器图标
+function getSolverIcon(solverType?: SolverType | null): string {
+  switch (solverType) {
+    case "speos": return "💡";      // 光学
+    case "fluent": return "🌊";     // 流体
+    case "maxwell": return "⚡";    // 电磁
+    case "mechanical": return "🔧"; // 结构
+    default: return "📊";           // 未知
+  }
+}
+
+// 获取求解器标签
+function getSolverLabel(solverType?: SolverType | null): string {
+  switch (solverType) {
+    case "speos": return "SPEOS";
+    case "fluent": return "FLUENT";
+    case "maxwell": return "Maxwell";
+    case "mechanical": return "Mechanical";
+    default: return "未知";
+  }
+}
+
+// 获取求解器颜色
+function getSolverColor(solverType?: SolverType | null): string {
+  switch (solverType) {
+    case "speos": return "bg-yellow-100 text-yellow-700 border-yellow-200";   // 金黄色
+    case "fluent": return "bg-blue-100 text-blue-700 border-blue-200";        // 蓝色
+    case "maxwell": return "bg-purple-100 text-purple-700 border-purple-200"; // 紫色
+    case "mechanical": return "bg-green-100 text-green-700 border-green-200"; // 绿色
+    default: return "bg-gray-100 text-gray-700 border-gray-200";              // 灰色
+  }
+}
+
+
+// 渲染进度信息组件（优雅显示，支持多求解器）
+function renderProgressInfo(
+  progressInfo: ProgressInfo | null | undefined, 
+  solverType?: SolverType | null
+): JSX.Element | null {
   if (!progressInfo) return null;
 
   const { 
@@ -364,7 +404,17 @@ function renderProgressInfo(progressInfo: ProgressInfo | null | undefined): JSX.
     current_pass,
     total_passes,
     current_sensor,
-    total_sensors
+    total_sensors,
+    // FLUENT 字段
+    current_iteration,
+    continuity_residual,
+    converged,
+    // Maxwell 字段
+    status,
+    // Mechanical 字段
+    load_step,
+    substep,
+    iteration,
   } = progressInfo;
   
   // 检查是否有任何有效的进度信息
@@ -373,25 +423,76 @@ function renderProgressInfo(progressInfo: ProgressInfo | null | undefined): JSX.
   const hasCurrentStep = current_step && current_step.trim() !== "";
   const hasPassInfo = current_pass != null && total_passes != null;
   const hasSensorInfo = current_sensor != null && total_sensors != null;
+  const hasFluentInfo = current_iteration != null || continuity_residual != null;
+  const hasMechanicalInfo = load_step != null || substep != null || iteration != null;
   
-  if (!hasEstimatedTime && !hasProgressPercent && !hasCurrentStep && !hasPassInfo && !hasSensorInfo) {
+  if (!hasEstimatedTime && !hasProgressPercent && !hasCurrentStep && !hasPassInfo && 
+      !hasSensorInfo && !hasFluentInfo && !hasMechanicalInfo && !status && !converged) {
     return null;
+  }
+  
+  // 根据求解器类型使用不同的颜色主题
+  const normalizedSolverType = solverType || "speos"; // 向后兼容，默认 SPEOS
+  let colorTheme = {
+    bgGradient: "from-blue-50 to-indigo-50",
+    border: "border-blue-200",
+    progressBg: "bg-blue-200",
+    progressBar: "from-blue-500 to-indigo-600",
+    textPrimary: "text-blue-900",
+    textSecondary: "text-blue-700",
+    textTertiary: "text-blue-600",
+  };
+  
+  switch (normalizedSolverType) {
+    case "fluent":
+      colorTheme = {
+        bgGradient: "from-cyan-50 to-blue-50",
+        border: "border-cyan-200",
+        progressBg: "bg-cyan-200",
+        progressBar: "from-cyan-500 to-blue-600",
+        textPrimary: "text-cyan-900",
+        textSecondary: "text-cyan-700",
+        textTertiary: "text-cyan-600",
+      };
+      break;
+    case "maxwell":
+      colorTheme = {
+        bgGradient: "from-purple-50 to-indigo-50",
+        border: "border-purple-200",
+        progressBg: "bg-purple-200",
+        progressBar: "from-purple-500 to-indigo-600",
+        textPrimary: "text-purple-900",
+        textSecondary: "text-purple-700",
+        textTertiary: "text-purple-600",
+      };
+      break;
+    case "mechanical":
+      colorTheme = {
+        bgGradient: "from-green-50 to-emerald-50",
+        border: "border-green-200",
+        progressBg: "bg-green-200",
+        progressBar: "from-green-500 to-emerald-600",
+        textPrimary: "text-green-900",
+        textSecondary: "text-green-700",
+        textTertiary: "text-green-600",
+      };
+      break;
   }
 
   return (
-    <div className="mt-2 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-3 py-2 shadow-sm">
-      {/* 主进度条 - 大而醒目 */}
+    <div className={`mt-2 rounded-lg bg-gradient-to-br ${colorTheme.bgGradient} border ${colorTheme.border} px-3 py-2 shadow-sm`}>
+      {/* 主进度条 - 大而醒目（SPEOS 和有百分比的求解器）*/}
       {hasProgressPercent && (
         <div className="mb-2">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-blue-900">📊 执行进度</span>
-            <span className="text-sm font-bold text-blue-700">
+            <span className={`text-xs font-semibold ${colorTheme.textPrimary}`}>📊 执行进度</span>
+            <span className={`text-sm font-bold ${colorTheme.textSecondary}`}>
               {formatProgressPercent(progress_percent)}
             </span>
           </div>
-          <div className="h-2 bg-blue-200 rounded-full overflow-hidden shadow-inner">
+          <div className={`h-2 ${colorTheme.progressBg} rounded-full overflow-hidden shadow-inner`}>
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
+              className={`h-full bg-gradient-to-r ${colorTheme.progressBar} rounded-full transition-all duration-500 ease-out`}
               style={{ width: `${Math.min(100, Math.max(0, progress_percent!))}%` }}
             />
           </div>
@@ -400,49 +501,158 @@ function renderProgressInfo(progressInfo: ProgressInfo | null | undefined): JSX.
       
       {/* 详细信息区域 */}
       <div className="space-y-1.5">
-        {/* 剩余时间 - 突出显示 */}
-        {hasEstimatedTime && (
-          <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
-            <span className="text-xs text-blue-700">⏱️</span>
-            <span className="text-xs text-blue-600 font-medium">剩余时间:</span>
-            <span className="text-xs text-blue-900 font-semibold ml-auto">{formatEstimatedTime(estimated_time)}</span>
-          </div>
+        {/* ========== SPEOS 进度 ========== */}
+        {(normalizedSolverType === "speos" || !solverType) && (
+          <>
+            {/* 剩余时间 - 突出显示 */}
+            {hasEstimatedTime && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className={`text-xs ${colorTheme.textSecondary}`}>⏱️</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>剩余时间:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{formatEstimatedTime(estimated_time)}</span>
+              </div>
+            )}
+            
+            {/* Pass 和 Sensor 信息 - 并排显示 */}
+            {(hasPassInfo || hasSensorInfo) && (
+              <div className="flex items-center gap-2">
+                {/* Pass 信息 */}
+                {hasPassInfo && (
+                  <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-2 py-1 flex-1">
+                    <span className="text-xs">🔄</span>
+                    <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>Pass:</span>
+                    <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+                      {current_pass}/{total_passes}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Sensor 信息 */}
+                {hasSensorInfo && (
+                  <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-2 py-1 flex-1">
+                    <span className="text-xs">📡</span>
+                    <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>Sensor:</span>
+                    <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+                      {current_sensor}/{total_sensors}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* 旧版兼容：当前步骤 */}
+            {hasCurrentStep && !hasPassInfo && !hasSensorInfo && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className={`text-xs ${colorTheme.textSecondary}`}>📍</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>当前步骤:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold font-mono ml-auto`}>{current_step}</span>
+              </div>
+            )}
+          </>
         )}
         
-        {/* Pass 和 Sensor 信息 - 并排显示 */}
-        {(hasPassInfo || hasSensorInfo) && (
-          <div className="flex items-center gap-2">
-            {/* Pass 信息 */}
-            {hasPassInfo && (
-              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-2 py-1 flex-1">
+        {/* ========== FLUENT 进度 ========== */}
+        {normalizedSolverType === "fluent" && (
+          <>
+            {/* 迭代步数 */}
+            {current_iteration != null && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
                 <span className="text-xs">🔄</span>
-                <span className="text-xs text-blue-600 font-medium">Pass:</span>
-                <span className="text-xs text-blue-900 font-semibold ml-auto">
-                  {current_pass}/{total_passes}
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>迭代步数:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{current_iteration}</span>
+              </div>
+            )}
+            
+            {/* 连续性残差 */}
+            {continuity_residual != null && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">📉</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>连续性残差:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold font-mono ml-auto`}>
+                  {continuity_residual.toExponential(2)}
                 </span>
               </div>
             )}
             
-            {/* Sensor 信息 */}
-            {hasSensorInfo && (
-              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-2 py-1 flex-1">
-                <span className="text-xs">📡</span>
-                <span className="text-xs text-blue-600 font-medium">Sensor:</span>
-                <span className="text-xs text-blue-900 font-semibold ml-auto">
-                  {current_sensor}/{total_sensors}
-                </span>
+            {/* 收敛状态 */}
+            {converged && (
+              <div className="flex items-center gap-1 bg-green-100 rounded-md px-2 py-1">
+                <span className="text-xs">✅</span>
+                <span className="text-xs text-green-700 font-medium">已收敛</span>
               </div>
             )}
-          </div>
+          </>
         )}
         
-        {/* 旧版兼容：当前步骤 */}
-        {hasCurrentStep && !hasPassInfo && !hasSensorInfo && (
-          <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
-            <span className="text-xs text-blue-700">📍</span>
-            <span className="text-xs text-blue-600 font-medium">当前步骤:</span>
-            <span className="text-xs text-blue-900 font-semibold font-mono ml-auto">{current_step}</span>
-          </div>
+        {/* ========== Maxwell 进度 ========== */}
+        {normalizedSolverType === "maxwell" && (
+          <>
+            {/* 自适应 Pass */}
+            {hasPassInfo && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">🔄</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>自适应 Pass:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{current_pass}</span>
+              </div>
+            )}
+            
+            {/* 状态 */}
+            {status && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">📊</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>状态:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{status}</span>
+              </div>
+            )}
+            
+            {/* 收敛状态 */}
+            {converged && (
+              <div className="flex items-center gap-1 bg-green-100 rounded-md px-2 py-1">
+                <span className="text-xs">✅</span>
+                <span className="text-xs text-green-700 font-medium">已收敛</span>
+              </div>
+            )}
+          </>
+        )}
+        
+        {/* ========== Mechanical 进度 ========== */}
+        {normalizedSolverType === "mechanical" && (
+          <>
+            {/* 载荷步 */}
+            {load_step != null && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">📊</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>载荷步:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{load_step}</span>
+              </div>
+            )}
+            
+            {/* 子步 */}
+            {substep != null && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">🔹</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>子步:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{substep}</span>
+              </div>
+            )}
+            
+            {/* 迭代 */}
+            {iteration != null && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">🔄</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>迭代:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{iteration}</span>
+              </div>
+            )}
+            
+            {/* 收敛状态 */}
+            {converged && (
+              <div className="flex items-center gap-1 bg-green-100 rounded-md px-2 py-1">
+                <span className="text-xs">✅</span>
+                <span className="text-xs text-green-700 font-medium">已收敛</span>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1373,7 +1583,19 @@ export default function TasksTable() {
       return (
         <tr key={task.task_id} className="border-b last:border-b-0 align-top">
           <td className="px-3 py-2 font-medium text-gray-800">
-            <div className="whitespace-normal break-words">{task.job_name || "-"}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="whitespace-normal break-words">{task.job_name || "-"}</div>
+              {/* ⭐ 新增：求解器类型标签 */}
+              {task.solver_type && (
+                <span 
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${getSolverColor(task.solver_type)}`}
+                  title={`求解器类型: ${getSolverLabel(task.solver_type)}`}
+                >
+                  <span>{getSolverIcon(task.solver_type)}</span>
+                  <span>{getSolverLabel(task.solver_type)}</span>
+                </span>
+              )}
+            </div>
             
             {/* ✅ 重试关系信息 */}
             {task.parent_task_id && (
@@ -1407,8 +1629,8 @@ export default function TasksTable() {
             <div className="mt-2 text-xs text-gray-500" title={`状态更新时间: ${statusTime}`}>
               {statusTime}
             </div>
-            {/* ✅ 新增：显示 SPEOS 执行进度信息 */}
-            {renderProgressInfo(task.progress_info)}
+            {/* ✅ 显示执行进度信息（多求解器）*/}
+            {renderProgressInfo(task.progress_info, task.solver_type)}
           </td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{durationText}</td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{submittedAt}</td>

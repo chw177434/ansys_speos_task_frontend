@@ -22,6 +22,7 @@ import {
   type UploadProgressInfo,
   type UploadConfigResponse,
   type DirectUploadParams,
+  type SolverType,
 } from "../lib/api";
 import {
   uploadFileWithResumable,
@@ -126,6 +127,19 @@ export default function UploadForm() {
   const [hpcJobName, setHpcJobName] = useState(initialState.hpcJobName ?? "");
   const [nodeCount, setNodeCount] = useState(initialState.nodeCount ?? "1");
   const [walltimeHours, setWalltimeHours] = useState(initialState.walltimeHours ?? "");
+  
+  // ⭐ 新增：求解器类型选择（默认 SPEOS）
+  const [solverType, setSolverType] = useState<SolverType>("speos");
+  
+  // ⭐ 新增：FLUENT 参数
+  const [dimension, setDimension] = useState<"2d" | "3d">("3d");
+  const [precision, setPrecision] = useState<"sp" | "dp">("dp");
+  const [iterations, setIterations] = useState<number>(100);
+  const [initializationMethod, setInitializationMethod] = useState<"hyb" | "standard">("hyb");
+  
+  // ⭐ 新增：Maxwell/Mechanical 参数
+  const [numCores, setNumCores] = useState("4");
+  const [designName, setDesignName] = useState("");
 
   const [showAdvanced, setShowAdvanced] = useState(() => {
     return (
@@ -444,15 +458,40 @@ export default function UploadForm() {
         version: version.trim(),
         job_name: jobName.trim(),
         project_dir: projectDir.trim() || undefined,
-        use_gpu: useGpu || undefined,
-        simulation_index: simulationIndex.trim() || undefined,
-        thread_count: threadCount.trim() || undefined,
-        priority: priority.trim() || undefined,
-        ray_count: rayCount.trim() || undefined,
-        duration_minutes: durationMinutes.trim() || undefined,
-        hpc_job_name: hpcJobName.trim() || undefined,
-        node_count: nodeCount.trim() || undefined,
-        walltime_hours: walltimeHours.trim() || undefined,
+        solver_type: solverType, // ⭐ 添加求解器类型
+        
+        // ========== SPEOS 参数 ==========
+        ...(solverType === "speos" && {
+          use_gpu: useGpu || undefined,
+          simulation_index: simulationIndex.trim() || undefined,
+          thread_count: threadCount.trim() || undefined,
+          priority: priority.trim() || undefined,
+          ray_count: rayCount.trim() || undefined,
+          duration_minutes: durationMinutes.trim() || undefined,
+          hpc_job_name: hpcJobName.trim() || undefined,
+          node_count: nodeCount.trim() || undefined,
+          walltime_hours: walltimeHours.trim() || undefined,
+        }),
+        
+        // ========== FLUENT 参数 ==========
+        ...(solverType === "fluent" && {
+          dimension,
+          precision,
+          iterations,
+          initialization_method: initializationMethod,
+          thread_count: threadCount.trim() || undefined,
+        }),
+        
+        // ========== Maxwell 参数 ==========
+        ...(solverType === "maxwell" && {
+          num_cores: numCores.trim() || undefined,
+          design_name: designName.trim() || undefined,
+        }),
+        
+        // ========== Mechanical 参数 ==========
+        ...(solverType === "mechanical" && {
+          num_cores: numCores.trim() || undefined,
+        }),
       };
 
       const result = await submitDirectUpload(
@@ -862,15 +901,40 @@ export default function UploadForm() {
         version: version.trim(),
         job_name: jobName.trim(),
         project_dir: projectDir.trim() || undefined,
-        use_gpu: useGpu || undefined,
-        simulation_index: simulationIndex.trim() || undefined,
-        thread_count: threadCount.trim() || undefined,
-        priority: priority.trim() || undefined,
-        ray_count: rayCount.trim() || undefined,
-        duration_minutes: durationMinutes.trim() || undefined,
-        hpc_job_name: hpcJobName.trim() || undefined,
-        node_count: nodeCount.trim() || undefined,
-        walltime_hours: walltimeHours.trim() || undefined,
+        solver_type: solverType, // ⭐ 添加求解器类型
+        
+        // ========== SPEOS 参数 ==========
+        ...(solverType === "speos" && {
+          use_gpu: useGpu || undefined,
+          simulation_index: simulationIndex.trim() || undefined,
+          thread_count: threadCount.trim() || undefined,
+          priority: priority.trim() || undefined,
+          ray_count: rayCount.trim() || undefined,
+          duration_minutes: durationMinutes.trim() || undefined,
+          hpc_job_name: hpcJobName.trim() || undefined,
+          node_count: nodeCount.trim() || undefined,
+          walltime_hours: walltimeHours.trim() || undefined,
+        }),
+        
+        // ========== FLUENT 参数 ==========
+        ...(solverType === "fluent" && {
+          dimension,
+          precision,
+          iterations,
+          initialization_method: initializationMethod,
+          thread_count: threadCount.trim() || undefined,
+        }),
+        
+        // ========== Maxwell 参数 ==========
+        ...(solverType === "maxwell" && {
+          num_cores: numCores.trim() || undefined,
+          design_name: designName.trim() || undefined,
+        }),
+        
+        // ========== Mechanical 参数 ==========
+        ...(solverType === "mechanical" && {
+          num_cores: numCores.trim() || undefined,
+        }),
       };
 
       // 使用 submitDirectUpload 接口的方式2：基于已上传文件
@@ -1366,15 +1430,40 @@ export default function UploadForm() {
       profile_name: profileName.trim(),
       version: version.trim(),
       project_dir: projectDir.trim() || undefined,
-      use_gpu: useGpu || undefined,
-      simulation_index: simulationIndex.trim() || undefined,
-      thread_count: threadCount.trim() || undefined,
-      priority: priority.trim() || undefined,
-      ray_count: rayCount.trim() || undefined,
-      duration_minutes: durationMinutes.trim() || undefined,
-      hpc_job_name: hpcJobName.trim() || undefined,
-      node_count: nodeCount.trim() || undefined,
-      walltime_hours: walltimeHours.trim() || undefined,
+      solver_type: solverType, // ⭐ 添加求解器类型
+      
+      // ========== SPEOS 参数 ==========
+      ...(solverType === "speos" && {
+        use_gpu: useGpu || undefined,
+        simulation_index: simulationIndex.trim() || undefined,
+        thread_count: threadCount.trim() || undefined,
+        priority: priority.trim() || undefined,
+        ray_count: rayCount.trim() || undefined,
+        duration_minutes: durationMinutes.trim() || undefined,
+        hpc_job_name: hpcJobName.trim() || undefined,
+        node_count: nodeCount.trim() || undefined,
+        walltime_hours: walltimeHours.trim() || undefined,
+      }),
+      
+      // ========== FLUENT 参数 ==========
+      ...(solverType === "fluent" && {
+        dimension,
+        precision,
+        iterations,
+        initialization_method: initializationMethod,
+        thread_count: threadCount.trim() || undefined,
+      }),
+      
+      // ========== Maxwell 参数 ==========
+      ...(solverType === "maxwell" && {
+        num_cores: numCores.trim() || undefined,
+        design_name: designName.trim() || undefined,
+      }),
+      
+      // ========== Mechanical 参数 ==========
+      ...(solverType === "mechanical" && {
+        num_cores: numCores.trim() || undefined,
+      }),
     });
 
     setUploadProgress(100);
@@ -1555,15 +1644,40 @@ export default function UploadForm() {
         profile_name: profileName.trim(),
         version: version.trim(),
         project_dir: projectDir.trim() || undefined,
-        use_gpu: useGpu || undefined,
-        simulation_index: simulationIndex.trim() || undefined,
-        thread_count: threadCount.trim() || undefined,
-        priority: priority.trim() || undefined,
-        ray_count: rayCount.trim() || undefined,
-        duration_minutes: durationMinutes.trim() || undefined,
-        hpc_job_name: hpcJobName.trim() || undefined,
-        node_count: nodeCount.trim() || undefined,
-        walltime_hours: walltimeHours.trim() || undefined,
+        solver_type: solverType, // ⭐ 添加求解器类型
+        
+        // ========== SPEOS 参数 ==========
+        ...(solverType === "speos" && {
+          use_gpu: useGpu || undefined,
+          simulation_index: simulationIndex.trim() || undefined,
+          thread_count: threadCount.trim() || undefined,
+          priority: priority.trim() || undefined,
+          ray_count: rayCount.trim() || undefined,
+          duration_minutes: durationMinutes.trim() || undefined,
+          hpc_job_name: hpcJobName.trim() || undefined,
+          node_count: nodeCount.trim() || undefined,
+          walltime_hours: walltimeHours.trim() || undefined,
+        }),
+        
+        // ========== FLUENT 参数 ==========
+        ...(solverType === "fluent" && {
+          dimension,
+          precision,
+          iterations,
+          initialization_method: initializationMethod,
+          thread_count: threadCount.trim() || undefined,
+        }),
+        
+        // ========== Maxwell 参数 ==========
+        ...(solverType === "maxwell" && {
+          num_cores: numCores.trim() || undefined,
+          design_name: designName.trim() || undefined,
+        }),
+        
+        // ========== Mechanical 参数 ==========
+        ...(solverType === "mechanical" && {
+          num_cores: numCores.trim() || undefined,
+        }),
       });
 
       setUploadProgress(100);
@@ -1843,6 +1957,24 @@ export default function UploadForm() {
               className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          
+          {/* ⭐ 新增：求解器类型选择 */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">求解器类型</label>
+            <select
+              value={solverType}
+              onChange={(event) => setSolverType(event.target.value as SolverType)}
+              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="speos">💡 SPEOS - 光学仿真</option>
+              <option value="fluent">🌊 FLUENT - 流体力学</option>
+              <option value="maxwell">⚡ Maxwell - 电磁场</option>
+              <option value="mechanical">🔧 Mechanical - 结构力学</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              选择要使用的 ANSYS 求解器类型
+            </p>
+          </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Master File 文件（必选）</label>
@@ -1923,22 +2055,25 @@ export default function UploadForm() {
 
           {showAdvanced && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-slate-700">使用 GPU 求解器 (-G)</p>
-                  <p className="text-xs text-slate-500">启用后将以 GPU 模式运行。</p>
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={useGpu}
-                    onChange={(event) => setUseGpu(event.target.checked)}
-                  />
-                  启用
-                </label>
-              </div>
+              {/* ========== SPEOS 参数 ========== */}
+              {solverType === "speos" && (
+                <>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">使用 GPU 求解器 (-G)</p>
+                      <p className="text-xs text-slate-500">启用后将以 GPU 模式运行。</p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={useGpu}
+                        onChange={(event) => setUseGpu(event.target.checked)}
+                      />
+                      启用
+                    </label>
+                  </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Simulation 序号 (-S)</label>
                   <input
@@ -2028,7 +2163,124 @@ export default function UploadForm() {
                   />
                 </div>
               </div>
+            </>
+          )}
+          
+          {/* ========== FLUENT 参数 ========== */}
+          {solverType === "fluent" && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">维度 (Dimension)</label>
+                <select
+                  value={dimension}
+                  onChange={(event) => setDimension(event.target.value as "2d" | "3d")}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="2d">2D</option>
+                  <option value="3d">3D</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">选择仿真维度</p>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">精度 (Precision)</label>
+                <select
+                  value={precision}
+                  onChange={(event) => setPrecision(event.target.value as "sp" | "dp")}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="sp">单精度（快速）</option>
+                  <option value="dp">双精度（准确，推荐）</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">推荐使用双精度</p>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">迭代步数 (Iterations)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={iterations}
+                  onChange={(event) => setIterations(Number(event.target.value))}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">仿真迭代次数</p>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">初始化方法 (Initialization)</label>
+                <select
+                  value={initializationMethod}
+                  onChange={(event) => setInitializationMethod(event.target.value as "hyb" | "standard")}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="hyb">混合初始化（推荐）</option>
+                  <option value="standard">标准初始化</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">推荐使用混合初始化</p>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Thread Count)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={threadCount}
+                  onChange={(event) => setThreadCount(event.target.value)}
+                  placeholder="自动"
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">计算使用的核心数</p>
+              </div>
             </div>
+          )}
+          
+          {/* ========== Maxwell 参数 ========== */}
+          {solverType === "maxwell" && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Cores)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={numCores}
+                  onChange={(event) => setNumCores(event.target.value)}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">计算使用的核心数</p>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">设计名称 (Design Name, 可选)</label>
+                <input
+                  type="text"
+                  value={designName}
+                  onChange={(event) => setDesignName(event.target.value)}
+                  placeholder="留空则求解所有设计"
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">指定要求解的设计</p>
+              </div>
+            </div>
+          )}
+          
+          {/* ========== Mechanical 参数 ========== */}
+          {solverType === "mechanical" && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Cores)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={numCores}
+                  onChange={(event) => setNumCores(event.target.value)}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">计算使用的核心数</p>
+              </div>
+            </div>
+          )}
+        </div>
           )}
         </div>
 

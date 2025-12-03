@@ -59,15 +59,45 @@ export interface CreateTaskResponse {
   message?: string | null;
 }
 
-// SPEOS 任务执行进度信息（后端实时捕获）
+// ============= 求解器类型定义 =============
+
+/**
+ * 求解器类型
+ */
+export type SolverType = "speos" | "fluent" | "maxwell" | "mechanical";
+
+// ============= 进度信息（支持多求解器）=============
+
+/**
+ * 进度信息（根据 solver_type 不同而不同）
+ */
 export interface ProgressInfo {
+  // ========== SPEOS 字段 ==========
   estimated_time?: string | null;      // ⏱️ 剩余时间，如 "5 days 14 hours" | "14 hours" | "19 minutes"
   progress_percent?: number | null;    // 📊 总体进度百分比，0-100
   current_step?: string | null;        // 当前步骤，如 "10/10"（旧版兼容）
-  current_pass?: number | null;        // 🔄 当前 Pass
-  total_passes?: number | null;        // 🔄 总 Pass 数
+  current_pass?: number | null;        // 🔄 当前 Pass（SPEOS/Maxwell 共用）
+  total_passes?: number | null;        // 🔄 总 Pass 数（SPEOS/Maxwell 共用）
   current_sensor?: number | null;      // 📡 当前 Sensor
   total_sensors?: number | null;       // 📡 总 Sensor 数
+  
+  // ========== FLUENT 字段 ==========
+  current_iteration?: number | null;   // 🔄 当前迭代步数
+  continuity_residual?: number | null; // 📉 连续性残差（科学计数法）
+  progress_type?: string | null;       // 进度类型
+  converged?: boolean | null;          // ✅ 是否收敛（通用）
+  
+  // ========== Maxwell 字段 ==========
+  status?: string | null;              // 📊 状态："solving", "converged"
+  // current_pass: 与 SPEOS 共用
+  
+  // ========== Mechanical 字段 ==========
+  load_step?: number | null;           // 📊 载荷步
+  substep?: number | null;             // 🔹 子步
+  iteration?: number | null;           // 🔄 迭代
+  
+  // ========== 通用字段 ==========
+  message?: string | null;             // 附加信息
 }
 
 export interface TaskStatusResponse {
@@ -78,10 +108,11 @@ export interface TaskStatusResponse {
   download_name?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
-  progress_info?: ProgressInfo | null; // ✅ SPEOS 执行进度信息
+  progress_info?: ProgressInfo | null; // ✅ 执行进度信息（多求解器）
   parent_task_id?: string | null; // ✅ 父任务ID（如果是重试任务）
   retry_count?: number | null; // ✅ 重试次数（0表示原始任务）
   retried_task_ids?: string[] | null; // ✅ 由此任务生成的重试任务列表
+  solver_type?: SolverType | null; // ⭐ 新增：求解器类型
 }
 
 export interface TaskOutputsResponse {
@@ -193,9 +224,15 @@ export interface DirectUploadParams {
   version: string;
   job_name: string;
   
+  // ⭐ 新增：求解器类型（默认 "speos"）
+  solver_type?: SolverType;
+  
   // 可选参数
   job_key?: string;
   display_name?: string;
+  project_dir?: string;
+  
+  // ========== SPEOS 参数 ==========
   use_gpu?: boolean;
   simulation_index?: string;
   thread_count?: string;
@@ -205,7 +242,16 @@ export interface DirectUploadParams {
   hpc_job_name?: string;
   node_count?: string;
   walltime_hours?: string;
-  project_dir?: string;
+  
+  // ========== FLUENT 参数 ==========
+  dimension?: "2d" | "3d";
+  precision?: "sp" | "dp";
+  iterations?: number;
+  initialization_method?: "hyb" | "standard";
+  
+  // ========== Maxwell/Mechanical 参数 ==========
+  num_cores?: string;
+  design_name?: string;  // Maxwell 专用
 }
 
 export interface DirectUploadResponse {
@@ -389,6 +435,11 @@ export interface ConfirmUploadRequest {
   profile_name: string;
   version: string;
   project_dir?: string;
+  
+  // ⭐ 新增：求解器类型（默认 "speos"）
+  solver_type?: SolverType;
+  
+  // ========== SPEOS 参数（solver_type="speos" 或未指定）==========
   use_gpu?: boolean;
   simulation_index?: string;
   thread_count?: string;
@@ -398,6 +449,19 @@ export interface ConfirmUploadRequest {
   hpc_job_name?: string;
   node_count?: string;
   walltime_hours?: string;
+  
+  // ========== FLUENT 参数（solver_type="fluent"）==========
+  dimension?: "2d" | "3d";              // 维度（默认 "3d"）
+  precision?: "sp" | "dp";              // 精度（默认 "dp"）
+  iterations?: number;                  // 迭代步数（默认 100）
+  initialization_method?: "hyb" | "standard";  // 初始化方法（默认 "hyb"）
+  
+  // ========== Maxwell 参数（solver_type="maxwell"）==========
+  num_cores?: string;           // 核心数（默认 "4"）
+  design_name?: string;         // 设计名称（可选）
+  
+  // ========== Mechanical 参数（solver_type="mechanical"）==========
+  // num_cores: 与 Maxwell 共用
 }
 
 export interface ConfirmUploadResponse {
