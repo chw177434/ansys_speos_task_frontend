@@ -1,4 +1,11 @@
 # Diagnostic script to test Node.js setup
+
+# Get the directory where this script is located
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Change to project root directory (one level up from scripts/)
+$ProjectRoot = Split-Path -Parent $ScriptDir
+Set-Location $ProjectRoot
+
 Write-Host "Diagnosing Node.js setup..." -ForegroundColor Yellow
 Write-Host ""
 

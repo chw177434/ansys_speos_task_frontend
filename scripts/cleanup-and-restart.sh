@@ -4,6 +4,12 @@
 # Author: AI Assistant
 # Date: 2025-11-12
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Change to project root directory (one level up from scripts/)
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 echo "========================================="
 echo "  清理所有前端服务"
 echo "========================================="
@@ -98,7 +104,7 @@ echo -e "${CYAN}7. 启动开发服务器（端口 3000）...${NC}"
 echo "========================================="
 echo ""
 
-./start-dev-background.sh
+"$SCRIPT_DIR/start-dev-background.sh"
 
 echo ""
 echo "========================================="
@@ -107,7 +113,7 @@ echo "========================================="
 echo ""
 echo -e "${CYAN}检查服务状态：${NC}"
 sleep 3
-./server-status.sh
+"$SCRIPT_DIR/server-status.sh"
 
 echo ""
 echo -e "${YELLOW}⚠️  重要提示：浏览器端操作${NC}"

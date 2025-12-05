@@ -136,15 +136,18 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
   // ⭐ 新增：求解器类型选择（使用传入的默认值或 SPEOS）
   const [solverType, setSolverType] = useState<SolverType>(defaultSolverType);
   
-  // ⭐ 新增：FLUENT 参数
+  // ⭐ 新增：FLUENT 参数（默认值参考 FLUENT_FRONTEND_GUIDE.md）
   const [dimension, setDimension] = useState<"2d" | "3d">("3d");
   const [precision, setPrecision] = useState<"sp" | "dp">("dp");
-  const [iterations, setIterations] = useState<number>(100);
-  const [initializationMethod, setInitializationMethod] = useState<"hyb" | "standard">("hyb");
+  const [iterations, setIterations] = useState<number>(300);  // 默认 300
+  const [initializationMethod, setInitializationMethod] = useState<"hyb" | "standard">("standard");  // 默认 standard
   
   // ⭐ 新增：Maxwell/Mechanical 参数
   const [numCores, setNumCores] = useState("4");
   const [designName, setDesignName] = useState("");
+  
+  // ⭐ 新增：Mechanical 任务标识（用于文件命名）
+  const [jobKey, setJobKey] = useState("");
 
   const [showAdvanced, setShowAdvanced] = useState(() => {
     return (
@@ -495,7 +498,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         
         // ========== Mechanical 参数 ==========
         ...(solverType === "mechanical" && {
-          num_cores: numCores.trim() || undefined,
+          thread_count: threadCount.trim() || undefined,
+          job_key: jobKey.trim() || undefined,
         }),
       };
 
@@ -938,7 +942,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         
         // ========== Mechanical 参数 ==========
         ...(solverType === "mechanical" && {
-          num_cores: numCores.trim() || undefined,
+          thread_count: threadCount.trim() || undefined,
+          job_key: jobKey.trim() || undefined,
         }),
       };
 
@@ -1247,6 +1252,9 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     formData.append("version", version.trim());
     formData.append("job_name", jobName.trim());
     formData.append("master_file", masterFile, masterFile.name);
+    
+    // ⭐ 关键修复：添加 solver_type 参数
+    formData.append("solver_type", solverType);
 
     if (includeArchive) {
       formData.append("include_archive", includeArchive, includeArchive.name);
@@ -1257,48 +1265,90 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       formData.append("project_dir", projectDirValue);
     }
 
-    if (useGpu) {
-      formData.append("use_gpu", "true");
-    }
+    // ========== SPEOS 参数 ==========
+    if (solverType === "speos") {
+      if (useGpu) {
+        formData.append("use_gpu", "true");
+      }
 
-    const trimmedSimulation = simulationIndex.trim();
-    if (trimmedSimulation) {
-      formData.append("simulation_index", trimmedSimulation);
-    }
+      const trimmedSimulation = simulationIndex.trim();
+      if (trimmedSimulation) {
+        formData.append("simulation_index", trimmedSimulation);
+      }
 
-    const trimmedThreads = threadCount.trim();
-    if (trimmedThreads) {
-      formData.append("thread_count", trimmedThreads);
-    }
+      const trimmedThreads = threadCount.trim();
+      if (trimmedThreads) {
+        formData.append("thread_count", trimmedThreads);
+      }
 
-    const trimmedPriority = priority.trim();
-    if (trimmedPriority) {
-      formData.append("priority", trimmedPriority);
-    }
+      const trimmedPriority = priority.trim();
+      if (trimmedPriority) {
+        formData.append("priority", trimmedPriority);
+      }
 
-    const trimmedRays = rayCount.trim();
-    if (trimmedRays) {
-      formData.append("ray_count", trimmedRays);
-    }
+      const trimmedRays = rayCount.trim();
+      if (trimmedRays) {
+        formData.append("ray_count", trimmedRays);
+      }
 
-    const trimmedDuration = durationMinutes.trim();
-    if (trimmedDuration) {
-      formData.append("duration_minutes", trimmedDuration);
-    }
+      const trimmedDuration = durationMinutes.trim();
+      if (trimmedDuration) {
+        formData.append("duration_minutes", trimmedDuration);
+      }
 
-    const trimmedJobName = hpcJobName.trim();
-    if (trimmedJobName) {
-      formData.append("hpc_job_name", trimmedJobName);
-    }
+      const trimmedJobName = hpcJobName.trim();
+      if (trimmedJobName) {
+        formData.append("hpc_job_name", trimmedJobName);
+      }
 
-    const trimmedNodes = nodeCount.trim();
-    if (trimmedNodes) {
-      formData.append("node_count", trimmedNodes);
-    }
+      const trimmedNodes = nodeCount.trim();
+      if (trimmedNodes) {
+        formData.append("node_count", trimmedNodes);
+      }
 
-    const trimmedWalltime = walltimeHours.trim();
-    if (trimmedWalltime) {
-      formData.append("walltime_hours", trimmedWalltime);
+      const trimmedWalltime = walltimeHours.trim();
+      if (trimmedWalltime) {
+        formData.append("walltime_hours", trimmedWalltime);
+      }
+    }
+    
+    // ========== FLUENT 参数 ==========
+    if (solverType === "fluent") {
+      formData.append("dimension", dimension);
+      formData.append("precision", precision);
+      formData.append("iterations", String(iterations));
+      formData.append("initialization_method", initializationMethod);
+      
+      const trimmedThreads = threadCount.trim();
+      if (trimmedThreads) {
+        formData.append("thread_count", trimmedThreads);
+      }
+    }
+    
+    // ========== Maxwell 参数 ==========
+    if (solverType === "maxwell") {
+      const trimmedCores = numCores.trim();
+      if (trimmedCores) {
+        formData.append("num_cores", trimmedCores);
+      }
+      
+      const trimmedDesign = designName.trim();
+      if (trimmedDesign) {
+        formData.append("design_name", trimmedDesign);
+      }
+    }
+    
+    // ========== Mechanical 参数 ==========
+    if (solverType === "mechanical") {
+      const trimmedThreads = threadCount.trim();
+      if (trimmedThreads) {
+        formData.append("thread_count", trimmedThreads);
+      }
+      
+      const trimmedJobKey = jobKey.trim();
+      if (trimmedJobKey) {
+        formData.append("job_key", trimmedJobKey);
+      }
     }
 
     const result: CreateTaskResponse = await createTask(formData);
@@ -1467,7 +1517,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       
       // ========== Mechanical 参数 ==========
       ...(solverType === "mechanical" && {
-        num_cores: numCores.trim() || undefined,
+        thread_count: threadCount.trim() || undefined,
+        job_key: jobKey.trim() || undefined,
       }),
     });
 
@@ -1681,7 +1732,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         
         // ========== Mechanical 参数 ==========
         ...(solverType === "mechanical" && {
-          num_cores: numCores.trim() || undefined,
+          thread_count: threadCount.trim() || undefined,
+          job_key: jobKey.trim() || undefined,
         }),
       });
 
@@ -1965,30 +2017,40 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5 overflow-auto pr-1">
         <div className="grid gap-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Profile Name</label>
-            <input
-              value={profileName}
-              onChange={(event) => setProfileName(event.target.value)}
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          {/* ⭐ SPEOS 特有参数：Profile Name 和 Version */}
+          {solverType === "speos" && (
+            <>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Profile Name</label>
+                <input
+                  value={profileName}
+                  onChange={(event) => setProfileName(event.target.value)}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Version</label>
-            <input
-              value={version}
-              onChange={(event) => setVersion(event.target.value)}
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Version</label>
+                <input
+                  value={version}
+                  onChange={(event) => setVersion(event.target.value)}
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </>
+          )}
 
+          {/* ⭐ 通用参数：Job Name（所有求解器都需要）*/}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Job Name</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Job Name <span className="text-red-500">*</span>
+            </label>
             <input
               value={jobName}
               onChange={(event) => setJobName(event.target.value)}
+              placeholder="任务名称，例如：机翼应力分析"
               className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              required
             />
           </div>
           
@@ -2226,69 +2288,175 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
           
           {/* ========== FLUENT 参数 ========== */}
           {solverType === "fluent" && (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              {/* 参数说明卡片 */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
+                <p className="text-xs text-blue-800">
+                  <span className="font-semibold">💡 提示：</span>
+                  FLUENT 参数已设置合理的默认值，通常无需修改。简单流动建议 100-200 步，复杂流动建议 500-1000 步。
+                </p>
+              </div>
+              
+              {/* 参数预设 */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">维度 (Dimension)</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">快速预设</label>
                 <select
-                  value={dimension}
-                  onChange={(event) => setDimension(event.target.value as "2d" | "3d")}
+                  onChange={(event) => {
+                    const preset = event.target.value;
+                    if (preset === "quick_test") {
+                      setDimension("3d");
+                      setPrecision("sp");
+                      setIterations(50);
+                      setThreadCount("4");
+                      setInitializationMethod("standard");
+                    } else if (preset === "standard") {
+                      setDimension("3d");
+                      setPrecision("dp");
+                      setIterations(300);
+                      setThreadCount("32");
+                      setInitializationMethod("hyb");
+                    } else if (preset === "high_accuracy") {
+                      setDimension("3d");
+                      setPrecision("dp");
+                      setIterations(1000);
+                      setThreadCount("64");
+                      setInitializationMethod("hyb");
+                    } else if (preset === "transient") {
+                      setDimension("3d");
+                      setPrecision("dp");
+                      setIterations(5000);
+                      setThreadCount("128");
+                      setInitializationMethod("hyb");
+                    }
+                    // 重置选择框
+                    event.target.value = "";
+                  }}
                   className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  defaultValue=""
                 >
-                  <option value="2d">2D</option>
-                  <option value="3d">3D</option>
+                  <option value="" disabled>选择预设配置（可选）</option>
+                  <option value="quick_test">🚀 快速测试（50步，单精度）</option>
+                  <option value="standard">⚙️ 标准计算（300步，双精度）</option>
+                  <option value="high_accuracy">🎯 高精度计算（1000步，双精度）</option>
+                  <option value="transient">⏱️ 瞬态计算（5000步，双精度）</option>
                 </select>
-                <p className="mt-1 text-xs text-slate-500">选择仿真维度</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  选择预设配置后，下方参数将自动填充。您仍可手动调整。
+                </p>
               </div>
               
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">精度 (Precision)</label>
-                <select
-                  value={precision}
-                  onChange={(event) => setPrecision(event.target.value as "sp" | "dp")}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="sp">单精度（快速）</option>
-                  <option value="dp">双精度（准确，推荐）</option>
-                </select>
-                <p className="mt-1 text-xs text-slate-500">推荐使用双精度</p>
-              </div>
-              
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">迭代步数 (Iterations)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={iterations}
-                  onChange={(event) => setIterations(Number(event.target.value))}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-slate-500">仿真迭代次数</p>
-              </div>
-              
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">初始化方法 (Initialization)</label>
-                <select
-                  value={initializationMethod}
-                  onChange={(event) => setInitializationMethod(event.target.value as "hyb" | "standard")}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="hyb">混合初始化（推荐）</option>
-                  <option value="standard">标准初始化</option>
-                </select>
-                <p className="mt-1 text-xs text-slate-500">推荐使用混合初始化</p>
-              </div>
-              
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Thread Count)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={threadCount}
-                  onChange={(event) => setThreadCount(event.target.value)}
-                  placeholder="自动"
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-slate-500">计算使用的核心数</p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    维度 (Dimension)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <select
+                    value={dimension}
+                    onChange={(event) => setDimension(event.target.value as "2d" | "3d")}
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="2d">2D</option>
+                    <option value="3d">3D（默认）</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    选择 2D 或 3D 模拟。3D 计算更精确但耗时更长。
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    精度 (Precision)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <select
+                    value={precision}
+                    onChange={(event) => setPrecision(event.target.value as "sp" | "dp")}
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="sp">单精度 (sp) - 快速</option>
+                    <option value="dp">双精度 (dp) - 推荐</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    双精度提供更高精度，推荐用于生产计算。
+                  </p>
+                  {precision === "sp" && (
+                    <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
+                      <p className="text-xs text-amber-700">
+                        ⚠️ 单精度可能导致精度损失
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    迭代步数 (Iterations)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={iterations}
+                    onChange={(event) => setIterations(Number(event.target.value))}
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    计算的迭代次数。简单流动 100-200 步，复杂流动 500-1000 步。
+                  </p>
+                  {iterations < 100 && (
+                    <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
+                      <p className="text-xs text-amber-700">
+                        ⚠️ 迭代步数较少，可能无法充分收敛
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    初始化方法 (Initialization)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <select
+                    value={initializationMethod}
+                    onChange={(event) => setInitializationMethod(event.target.value as "hyb" | "standard")}
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="standard">标准初始化 (standard)</option>
+                    <option value="hyb">混合初始化 (hyb) - 推荐</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    混合初始化（hyb）通常能提供更好的初始流场。
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    CPU 核心数 (CPU Cores)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={128}
+                    value={threadCount}
+                    onChange={(event) => setThreadCount(event.target.value)}
+                    placeholder="默认 32"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    并行计算使用的 CPU 核心数。需根据 License 和硬件限制设置。
+                  </p>
+                  {threadCount && Number(threadCount) > 64 && (
+                    <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
+                      <p className="text-xs text-amber-700">
+                        ⚠️ CPU 核心数过多可能会降低并行效率
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -2326,15 +2494,30 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
           {solverType === "mechanical" && (
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Cores)</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  核心数 (Thread Count) <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="number"
                   min={1}
-                  value={numCores}
-                  onChange={(event) => setNumCores(event.target.value)}
+                  value={threadCount}
+                  onChange={(event) => setThreadCount(event.target.value)}
+                  placeholder="8"
                   className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="mt-1 text-xs text-slate-500">计算使用的核心数</p>
+                <p className="mt-1 text-xs text-slate-500">并行核心数，建议值：8, 16, 32</p>
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">任务标识 (Job Key)</label>
+                <input
+                  type="text"
+                  value={jobKey}
+                  onChange={(event) => setJobKey(event.target.value)}
+                  placeholder="wing_001"
+                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">用于文件命名，建议使用简短的英文标识</p>
               </div>
             </div>
           )}

@@ -1,6 +1,12 @@
 # Next.js Development Server Startup Script
 # This is the working solution - clean PATH and run npm
 
+# Get the directory where this script is located
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Change to project root directory (one level up from scripts/)
+$ProjectRoot = Split-Path -Parent $ScriptDir
+Set-Location $ProjectRoot
+
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Starting Next.js Dev Server" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan

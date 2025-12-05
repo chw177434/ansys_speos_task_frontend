@@ -244,10 +244,10 @@ export interface DirectUploadParams {
   walltime_hours?: string;
   
   // ========== FLUENT 参数 ==========
-  dimension?: "2d" | "3d";
-  precision?: "sp" | "dp";
-  iterations?: number;
-  initialization_method?: "hyb" | "standard";
+  dimension?: "2d" | "3d";              // 维度（默认 "3d"）
+  precision?: "sp" | "dp";              // 精度（默认 "dp"）
+  iterations?: number;                  // 迭代步数（默认 300）
+  initialization_method?: "hyb" | "standard";  // 初始化方法（默认 "standard"）
   
   // ========== Maxwell/Mechanical 参数 ==========
   num_cores?: string;
@@ -289,9 +289,15 @@ export async function submitDirectUpload(
     formData.append("version", params.version);
     formData.append("job_name", params.job_name);
     
-    // 添加可选参数（转为字符串）
+    // ⭐ 关键修复：添加 solver_type 参数（默认 "speos"）
+    formData.append("solver_type", params.solver_type || "speos");
+    
+    // 添加可选通用参数
     if (params.job_key) formData.append("job_key", params.job_key);
     if (params.display_name) formData.append("display_name", params.display_name);
+    if (params.project_dir) formData.append("project_dir", params.project_dir);
+    
+    // ========== SPEOS 参数 ==========
     if (params.use_gpu !== undefined) formData.append("use_gpu", String(params.use_gpu));
     if (params.simulation_index) formData.append("simulation_index", params.simulation_index);
     if (params.thread_count) formData.append("thread_count", params.thread_count);
@@ -301,7 +307,16 @@ export async function submitDirectUpload(
     if (params.hpc_job_name) formData.append("hpc_job_name", params.hpc_job_name);
     if (params.node_count) formData.append("node_count", params.node_count);
     if (params.walltime_hours) formData.append("walltime_hours", params.walltime_hours);
-    if (params.project_dir) formData.append("project_dir", params.project_dir);
+    
+    // ========== FLUENT 参数 ==========
+    if (params.dimension) formData.append("dimension", params.dimension);
+    if (params.precision) formData.append("precision", params.precision);
+    if (params.iterations !== undefined) formData.append("iterations", String(params.iterations));
+    if (params.initialization_method) formData.append("initialization_method", params.initialization_method);
+    
+    // ========== Maxwell/Mechanical 参数 ==========
+    if (params.num_cores) formData.append("num_cores", params.num_cores);
+    if (params.design_name) formData.append("design_name", params.design_name);
 
     const xhr = new XMLHttpRequest();
     
@@ -452,16 +467,17 @@ export interface ConfirmUploadRequest {
   
   // ========== FLUENT 参数（solver_type="fluent"）==========
   dimension?: "2d" | "3d";              // 维度（默认 "3d"）
-  precision?: "sp" | "dp";              // 精度（默认 "dp"）
-  iterations?: number;                  // 迭代步数（默认 100）
-  initialization_method?: "hyb" | "standard";  // 初始化方法（默认 "hyb"）
+  precision?: "sp" | "dp";              // 精度（默认 "dp"，推荐双精度）
+  iterations?: number;                  // 迭代步数（默认 300，简单流动 100-200，复杂流动 500-1000）
+  initialization_method?: "hyb" | "standard";  // 初始化方法（默认 "standard"，推荐 "hyb"）
   
   // ========== Maxwell 参数（solver_type="maxwell"）==========
   num_cores?: string;           // 核心数（默认 "4"）
   design_name?: string;         // 设计名称（可选）
   
   // ========== Mechanical 参数（solver_type="mechanical"）==========
-  // num_cores: 与 Maxwell 共用
+  // thread_count: 核心数（必需，与 SPEOS/FLUENT 共用）
+  job_key?: string;             // 任务标识（用于文件命名，推荐）
 }
 
 export interface ConfirmUploadResponse {

@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Change to project root directory (one level up from scripts/)
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 echo "========================================="
 echo "  诊断前后端连接"
 echo "========================================="
@@ -63,7 +69,7 @@ elif [ "$FRONTEND_CODE" != "200" ]; then
     echo "   需要完全重启 Next.js："
     echo "   pkill -9 -f next"
     echo "   rm -rf .next"
-    echo "   ./start-dev-background.sh"
+    echo "   $SCRIPT_DIR/start-dev-background.sh"
 else
     echo "✅ 一切正常！"
 fi

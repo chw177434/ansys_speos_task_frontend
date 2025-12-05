@@ -3,6 +3,12 @@
 # 强制停止所有前端相关进程
 # 快速清理脚本
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Change to project root directory (one level up from scripts/)
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 echo "🛑 停止所有前端服务..."
 
 # 停止所有 Next.js 进程

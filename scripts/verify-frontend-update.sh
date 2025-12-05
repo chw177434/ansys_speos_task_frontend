@@ -4,6 +4,12 @@
 # Author: AI Assistant
 # Date: 2024-11-13
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Change to project root directory (one level up from scripts/)
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 echo "========================================="
 echo "  验证前端代码更新"
 echo "========================================="
@@ -29,7 +35,7 @@ if lsof -i:3000 > /dev/null 2>&1 || fuser 3000/tcp > /dev/null 2>&1; then
     fi
 else
     echo -e "${RED}✗ 前端服务未运行！${NC}"
-    echo -e "${YELLOW}请先运行: ./start-dev-background.sh${NC}"
+    echo -e "${YELLOW}请先运行: $SCRIPT_DIR/start-dev-background.sh${NC}"
     exit 1
 fi
 echo ""
