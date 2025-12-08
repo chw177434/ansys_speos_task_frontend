@@ -143,7 +143,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
   const [initializationMethod, setInitializationMethod] = useState<"hyb" | "standard">("standard");  // 默认 standard
   
   // ⭐ 新增：Maxwell/Mechanical 参数
-  const [numCores, setNumCores] = useState("4");
+  const [numCores, setNumCores] = useState("32"); // 根据文档，Maxwell 默认值为 32 核
   const [designName, setDesignName] = useState("");
   
   // ⭐ 新增：Mechanical 任务标识（用于文件命名）
@@ -1825,7 +1825,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     },
     maxwell: {
       title: "提交 Maxwell 任务",
-      description: "填写任务信息并上传 .aedt 项目文件（必选），配置电磁场仿真参数。",
+      description: "填写任务信息并上传 .aedt 或 .aedtz 项目文件（必选），配置电磁场仿真参数。强烈推荐使用 .aedtz 格式（归档包，包含所有资源文件）。",
       icon: "⚡",
     },
     mechanical: {
@@ -2101,6 +2101,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
             <input
               ref={masterInputRef}
               type="file"
+              accept={solverType === "maxwell" ? ".aedt,.aedtz" : solverType === "fluent" ? ".cas,.cas.h5" : solverType === "mechanical" ? ".dat,.inp" : undefined}
               onClick={(event) => {
                 (event.target as HTMLInputElement).value = "";
               }}
@@ -2112,6 +2113,20 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
             />
             {masterFileLabel && (
               <p className="mt-1 text-xs text-gray-500">已选择：{masterFileLabel}</p>
+            )}
+            {/* Maxwell 文件格式提示 */}
+            {solverType === "maxwell" && (
+              <div className="mt-2 rounded-md bg-blue-50 border border-blue-200 px-3 py-2">
+                <p className="text-xs text-blue-800 font-medium">
+                  ⚡ Maxwell 文件格式说明
+                </p>
+                <p className="mt-1 text-xs text-blue-700">
+                  <strong>强烈推荐：</strong>.aedtz（归档包，包含所有资源文件，避免缺少 .aedb 文件夹的错误）
+                </p>
+                <p className="mt-1 text-xs text-blue-700">
+                  <strong>支持格式：</strong>.aedt（需要同时上传对应的 .aedb 文件夹压缩包作为 Include 文件）
+                </p>
+              </div>
             )}
           </div>
 
@@ -2146,6 +2161,12 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               <p className="mt-1 text-xs text-amber-700">
                 支持格式：.zip, .rar, .7z, .tar, .gz, .tar.gz
               </p>
+              {solverType === "maxwell" && (
+                <p className="mt-1 text-xs text-amber-700">
+                  <strong>Maxwell 特殊说明：</strong>如果上传 .aedt 文件，需要同时上传对应的 .aedb 文件夹压缩包作为 Include 文件。
+                  强烈建议使用 .aedtz 格式（归档包），可以避免此问题。
+                </p>
+              )}
               <p className="mt-1 text-xs text-amber-600">
                 📦 压缩方法：Windows右键文件夹 → "发送到" → "压缩(zipped)文件夹"；Mac右键文件夹 → "压缩"
               </p>
@@ -2463,29 +2484,68 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
           
           {/* ========== Maxwell 参数 ========== */}
           {solverType === "maxwell" && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Cores)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={numCores}
-                  onChange={(event) => setNumCores(event.target.value)}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-slate-500">计算使用的核心数</p>
+            <div className="space-y-4">
+              {/* 参数说明卡片 */}
+              <div className="rounded-lg bg-purple-50 border border-purple-200 px-3 py-2">
+                <p className="text-xs text-purple-800">
+                  <span className="font-semibold">💡 提示：</span>
+                  Maxwell 参数已设置合理默认值。当前服务器 License 支持最大 32 核，默认使用 32 核以充分利用 License 权限。
+                </p>
               </div>
               
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">设计名称 (Design Name, 可选)</label>
-                <input
-                  type="text"
-                  value={designName}
-                  onChange={(event) => setDesignName(event.target.value)}
-                  placeholder="留空则求解所有设计"
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-slate-500">指定要求解的设计</p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    核心数 (Num Cores)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={numCores}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "" || (Number(value) >= 1 && Number(value) <= 32)) {
+                        setNumCores(value);
+                      }
+                    }}
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    并行计算使用的核心数（1-32，根据 License 权限）
+                  </p>
+                  <p className="mt-1 text-xs text-purple-600">
+                    默认值：32 核（推荐，充分利用 License 权限）
+                  </p>
+                  {numCores && Number(numCores) > 32 && (
+                    <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
+                      <p className="text-xs text-amber-700">
+                        ⚠️ 当前 License 支持最大 32 核，请使用 1-32 之间的值
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    设计名称 (Design Name)
+                    <span className="ml-1 text-xs text-slate-500">❓</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={designName}
+                    onChange={(event) => setDesignName(event.target.value)}
+                    placeholder="留空则求解所有设计"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    如果项目包含多个设计，需要指定要求解的设计名称
+                  </p>
+                  <p className="mt-1 text-xs text-purple-600">
+                    可选：留空则求解项目中的所有设计
+                  </p>
+                </div>
               </div>
             </div>
           )}

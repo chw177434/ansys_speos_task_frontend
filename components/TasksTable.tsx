@@ -587,17 +587,61 @@ function renderProgressInfo(
         {/* ========== Maxwell 进度 ========== */}
         {normalizedSolverType === "maxwell" && (
           <>
+            {/* 进度百分比 - Maxwell 支持进度百分比显示 */}
+            {hasProgressPercent && (
+              <div className="mb-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-semibold ${colorTheme.textPrimary}`}>📊 求解进度</span>
+                  <span className={`text-sm font-bold ${colorTheme.textSecondary}`}>
+                    {formatProgressPercent(progress_percent)}
+                  </span>
+                </div>
+                <div className={`h-2 ${colorTheme.progressBg} rounded-full overflow-hidden shadow-inner`}>
+                  <div
+                    className={`h-full bg-gradient-to-r ${colorTheme.progressBar} rounded-full transition-all duration-500 ease-out`}
+                    style={{ width: `${Math.min(100, Math.max(0, progress_percent!))}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {/* 进度消息 */}
+            {progressInfo.message && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">💬</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-medium`}>{progressInfo.message}</span>
+              </div>
+            )}
+            
+            {/* 进度类型 */}
+            {progressInfo.progress_type && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">📋</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>进度类型:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+                  {progressInfo.progress_type === "solving" && "正在求解"}
+                  {progressInfo.progress_type === "adaptive_pass" && "自适应网格细化"}
+                  {progressInfo.progress_type === "computing" && "正在计算"}
+                  {progressInfo.progress_type === "converged" && "已收敛"}
+                  {progressInfo.progress_type === "completed" && "已完成"}
+                  {!["solving", "adaptive_pass", "computing", "converged", "completed"].includes(progressInfo.progress_type) && progressInfo.progress_type}
+                </span>
+              </div>
+            )}
+            
             {/* 自适应 Pass */}
             {hasPassInfo && (
               <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
                 <span className="text-xs">🔄</span>
                 <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>自适应 Pass:</span>
-                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{current_pass}</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+                  {current_pass}{total_passes ? `/${total_passes}` : ""}
+                </span>
               </div>
             )}
             
-            {/* 状态 */}
-            {status && (
+            {/* 状态（兼容旧字段） */}
+            {status && !progressInfo.progress_type && (
               <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
                 <span className="text-xs">📊</span>
                 <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>状态:</span>
