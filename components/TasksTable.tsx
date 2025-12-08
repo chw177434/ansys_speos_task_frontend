@@ -842,6 +842,7 @@ export default function TasksTable() {
 
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [solverTypeFilter, setSolverTypeFilter] = useState("");
 
   const isClientPaging = pagingMode === "client" && Array.isArray(allRows);
 
@@ -878,6 +879,7 @@ export default function TasksTable() {
   const filteredRows = useMemo(() => {
     const normalizedName = nameFilter.trim().toLowerCase();
     const normalizedStatus = statusFilter.trim();
+    const normalizedSolverType = solverTypeFilter.trim();
 
     return baseRows.filter((task) => {
       const jobName = (task.job_name || "").toLowerCase();
@@ -887,9 +889,10 @@ export default function TasksTable() {
         task.task_id.toLowerCase().includes(normalizedName);
 
       const matchesStatus = normalizedStatus === "" || task.status === normalizedStatus;
-      return matchesName && matchesStatus;
+      const matchesSolverType = normalizedSolverType === "" || task.solver_type === normalizedSolverType;
+      return matchesName && matchesStatus && matchesSolverType;
     });
-  }, [baseRows, nameFilter, statusFilter]);
+  }, [baseRows, nameFilter, statusFilter, solverTypeFilter]);
 
   const paginatedRows = useMemo(() => {
     if (isClientPaging) {
@@ -1219,18 +1222,29 @@ export default function TasksTable() {
         
         // ⚡ 如果任务状态变为 SUCCESS，立即刷新任务列表并获取输出文件
         if (statusChanged && isSuccess && !wasSuccess) {
-          console.log(`✅ [Polling] 检测到任务 ${taskId} 状态变为 SUCCESS，立即刷新任务列表`);
+          console.log(`✅ [Polling] 检测到任务 ${taskId} (求解器: ${data.solver_type || 'unknown'}) 状态变为 SUCCESS，立即刷新任务列表`);
           
           // 立即刷新任务列表（获取最新状态）
           // ⚡ 使用 ref 获取最新的分页信息，避免闭包问题
           const { page: currentPage, pageSize: currentPageSize, isClientPaging: currentIsClientPaging } = pagingInfoRef.current;
           const targetPage = currentIsClientPaging ? 1 : currentPage;
-          void fetchTasks(targetPage, currentPageSize).then(() => {
-            // 刷新后，稍等片刻确保状态已更新，然后获取输出文件
-            setTimeout(() => {
-              void fetchOutputsForTask(taskId);
-            }, 300);
-          });
+          
+          // ⚡ 重要：确保在刷新前先更新本地状态，避免状态不一致
+          // 使用 setTimeout 0 确保状态更新在下一个事件循环中完成
+          setTimeout(() => {
+            void fetchTasks(targetPage, currentPageSize).then(() => {
+              // 刷新后，稍等片刻确保状态已更新，然后获取输出文件
+              setTimeout(() => {
+                void fetchOutputsForTask(taskId);
+              }, 300);
+            }).catch((err) => {
+              console.error(`刷新任务列表失败:`, err);
+              // 即使刷新失败，也尝试获取输出文件（可能已经可以从本地状态获取）
+              setTimeout(() => {
+                void fetchOutputsForTask(taskId);
+              }, 300);
+            });
+          }, 0);
         }
       } catch (err) {
         console.warn(`Error fetching progress for task ${taskId}:`, err);
@@ -1320,10 +1334,11 @@ export default function TasksTable() {
         const currentTask = currentTasksRef.current.get(taskId);
         if (currentTask && !TERMINAL_STATUSES.has(currentTask.status)) {
           // 任务仍在运行或等待中，继续轮询
+          // ⚡ fetchProgressForTask 会自动检测状态变化并在状态变为 SUCCESS 时触发刷新
           void fetchProgressForTask(taskId);
         } else {
           // 任务已完成，清除定时器
-          // ⚡ 如果任务刚变为 SUCCESS，可能已经在 fetchProgressForTask 中触发了刷新
+          // ⚡ fetchProgressForTask 中已经处理了状态变为 SUCCESS 时的刷新逻辑
           const existingTimer = timers.get(taskId);
           if (existingTimer) {
             window.clearInterval(existingTimer);
@@ -1732,6 +1747,26 @@ export default function TasksTable() {
                   {option.label}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600" htmlFor="task-solver-type-filter">
+              求解器类型
+            </label>
+            <select
+              id="task-solver-type-filter"
+              value={solverTypeFilter}
+              onChange={(event) => {
+                setPage(1);
+                setSolverTypeFilter(event.target.value);
+              }}
+              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">全部类型</option>
+              <option value="speos">💡 SPEOS - 光学</option>
+              <option value="fluent">🌊 FLUENT - 流体</option>
+              <option value="maxwell">⚡ Maxwell - 电磁</option>
+              <option value="mechanical">🔧 Mechanical - 结构</option>
             </select>
           </div>
           <button
