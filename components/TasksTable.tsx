@@ -1111,9 +1111,21 @@ export default function TasksTable() {
         // 比较新旧任务状态，找出刚完成的任务
         rowsFromServer.forEach((newTask) => {
           const oldTask = currentTaskMap.get(newTask.task_id);
-          // 如果任务状态从非成功变为成功，标记为需要立即获取输出文件
-          if (newTask.status === "SUCCESS" && oldTask && oldTask.status !== "SUCCESS") {
+          const oldStatus = oldTask?.status;
+          const newStatus = newTask.status;
+          
+          // ⚡ 修复：如果任务状态从非成功变为成功，标记为需要立即获取输出文件
+          // 同时记录日志，帮助调试mechanical和maxwell模块的状态更新问题
+          if (newStatus === "SUCCESS" && oldTask && oldStatus !== "SUCCESS") {
             newlyCompletedTasks.push(newTask.task_id);
+            console.log(`✅ [fetchTasks] 检测到任务 ${newTask.task_id} (求解器: ${newTask.solver_type || 'unknown'}) 状态从 ${oldStatus} 变为 SUCCESS`);
+          }
+          
+          // ⚡ 修复：如果服务器返回的状态是SUCCESS，但本地状态不是，也要更新
+          // 这可以处理轮询停止后状态不同步的情况
+          if (newStatus === "SUCCESS" && oldTask && oldStatus !== "SUCCESS") {
+            // 状态已经在上面检测到了，这里只是确保状态被更新
+            // 状态会在下面的 mergedRows 处理中被更新
           }
         });
         
@@ -1150,15 +1162,33 @@ export default function TasksTable() {
           typeof (data as { total?: number }).total === "number" ||
           typeof (data as { count?: number }).count === "number";
 
-        // ⚡ 重要：在设置 state 之前，合并现有的 progress_info
+        // ⚡ 重要：在设置 state 之前，合并现有的 progress_info 和状态
         // 如果列表接口返回的任务没有 progress_info，但 ref 中有，则保留 ref 中的
         // 使用 ref 而不是 state，因为 ref 总是最新的
+        // ⚡ 修复：如果本地状态已经是SUCCESS，但服务器返回的状态不是，优先使用本地状态
+        // 这可以防止服务器返回的旧状态覆盖本地已更新的状态
         const mergedRows = rowsFromServer.map((newTask) => {
           const existingTask = currentTaskMap.get(newTask.task_id);
+          if (!existingTask) {
+            return newTask;
+          }
+          
+          // ⚡ 修复：如果本地状态是SUCCESS，但服务器返回的状态不是，优先使用本地状态
+          // 这可以防止服务器返回的旧状态覆盖本地已更新的状态（特别是mechanical和maxwell模块）
+          if (existingTask.status === "SUCCESS" && newTask.status !== "SUCCESS") {
+            console.log(`⚠️ [fetchTasks] 任务 ${newTask.task_id} 本地状态是SUCCESS，但服务器返回的是 ${newTask.status}，保留本地SUCCESS状态`);
+            return {
+              ...newTask,
+              status: "SUCCESS", // 保留本地SUCCESS状态
+              progress_info: existingTask.progress_info || newTask.progress_info, // 保留本地progress_info
+            };
+          }
+          
           // 如果新任务没有 progress_info，但现有任务有，则保留现有的
-          if (!newTask.progress_info && existingTask?.progress_info) {
+          if (!newTask.progress_info && existingTask.progress_info) {
             return { ...newTask, progress_info: existingTask.progress_info };
           }
+          
           return newTask;
         });
         
@@ -1251,21 +1281,26 @@ export default function TasksTable() {
         if (process.env.NODE_ENV === "development") {
           console.log(`[Progress] 更新任务 ${taskId} 的进度信息:`, {
             status: newStatus,
+            oldStatus: oldTask?.status,
             progress_info: data.progress_info,
             hasProgressInfo: !!data.progress_info,
+            solver_type: data.solver_type,
           });
         }
         
+        // ⚡ 重要：先更新本地状态，确保状态立即反映在UI上
         applyTaskUpdate(taskId, (task) => ({
           ...task,
           status: newStatus || task.status,
           progress_info: data.progress_info || null,
           duration: data.duration ?? task.duration,
           elapsed_seconds: data.elapsed_seconds ?? task.elapsed_seconds,
+          solver_type: data.solver_type || task.solver_type, // 确保求解器类型也被更新
         }));
         
         // ⚡ 如果任务状态变为 SUCCESS，立即刷新任务列表并获取输出文件
-        if (statusChanged && isSuccess && !wasSuccess) {
+        // ⚡ 修复：不仅检查状态变化，还要检查如果当前状态是SUCCESS但之前不是，也要刷新
+        if (isSuccess && !wasSuccess) {
           console.log(`✅ [Polling] 检测到任务 ${taskId} (求解器: ${data.solver_type || 'unknown'}) 状态变为 SUCCESS，立即刷新任务列表`);
           
           // 立即刷新任务列表（获取最新状态）
@@ -1273,22 +1308,20 @@ export default function TasksTable() {
           const { page: currentPage, pageSize: currentPageSize, isClientPaging: currentIsClientPaging } = pagingInfoRef.current;
           const targetPage = currentIsClientPaging ? 1 : currentPage;
           
-          // ⚡ 重要：确保在刷新前先更新本地状态，避免状态不一致
-          // 使用 setTimeout 0 确保状态更新在下一个事件循环中完成
-          setTimeout(() => {
-            void fetchTasks(targetPage, currentPageSize).then(() => {
-              // 刷新后，稍等片刻确保状态已更新，然后获取输出文件
-              setTimeout(() => {
-                void fetchOutputsForTask(taskId);
-              }, 300);
-            }).catch((err) => {
-              console.error(`刷新任务列表失败:`, err);
-              // 即使刷新失败，也尝试获取输出文件（可能已经可以从本地状态获取）
-              setTimeout(() => {
-                void fetchOutputsForTask(taskId);
-              }, 300);
-            });
-          }, 0);
+          // ⚡ 重要：立即刷新，不等待setTimeout，确保状态同步
+          // 先更新本地状态（已在上面完成），然后刷新列表
+          void fetchTasks(targetPage, currentPageSize).then(() => {
+            // 刷新后，稍等片刻确保状态已更新，然后获取输出文件
+            setTimeout(() => {
+              void fetchOutputsForTask(taskId);
+            }, 300);
+          }).catch((err) => {
+            console.error(`刷新任务列表失败:`, err);
+            // 即使刷新失败，也尝试获取输出文件（可能已经可以从本地状态获取）
+            setTimeout(() => {
+              void fetchOutputsForTask(taskId);
+            }, 300);
+          });
         }
       } catch (err) {
         console.warn(`Error fetching progress for task ${taskId}:`, err);
