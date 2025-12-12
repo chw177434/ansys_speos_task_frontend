@@ -1825,7 +1825,7 @@ export default function TasksTable() {
   };
 
   return (
-    <div className="flex h-[580px] lg:h-[calc(100vh-12rem)] flex-col rounded-xl bg-white p-4 shadow">
+    <div className="flex h-[580px] lg:h-[calc(100vh-10rem)] xl:h-[calc(100vh-8rem)] 2xl:h-[calc(100vh-6rem)] flex-col rounded-xl bg-white p-4 shadow">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div className="flex-1 min-w-0">
           <h2 className="text-lg font-semibold text-gray-900">任务列表</h2>
