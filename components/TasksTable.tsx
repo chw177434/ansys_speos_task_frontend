@@ -393,9 +393,11 @@ function getSolverColor(solverType?: SolverType | null): string {
 // 渲染进度信息组件（优雅显示，支持多求解器）
 function renderProgressInfo(
   progressInfo: ProgressInfo | null | undefined, 
-  solverType?: SolverType | null
+  solverType?: SolverType | null,
+  taskStatus?: string | null // ⚡ 新增：任务状态，用于判断是否应该显示进度信息
 ): JSX.Element | null {
-  if (!progressInfo) return null;
+  // ⚡ 修复：如果任务已完成（SUCCESS），不显示进度信息（避免显示过时的"正在求解"等信息）
+  if (!progressInfo || taskStatus === "SUCCESS") return null;
 
   const { 
     estimated_time, 
@@ -605,11 +607,13 @@ function renderProgressInfo(
               </div>
             )}
             
-            {/* 进度消息 */}
+            {/* 进度消息 - 限制长度，避免显示过长 */}
             {progressInfo.message && (
-              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
-                <span className="text-xs">💬</span>
-                <span className={`text-xs ${colorTheme.textPrimary} font-medium`}>{progressInfo.message}</span>
+              <div className="flex items-start gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs mt-0.5">💬</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-medium break-words line-clamp-3`} title={progressInfo.message}>
+                  {progressInfo.message.length > 150 ? `${progressInfo.message.substring(0, 150)}...` : progressInfo.message}
+                </span>
               </div>
             )}
             
@@ -1180,12 +1184,20 @@ export default function TasksTable() {
             return {
               ...newTask,
               status: "SUCCESS", // 保留本地SUCCESS状态
-              progress_info: existingTask.progress_info || newTask.progress_info, // 保留本地progress_info
+              progress_info: null, // ⚡ 修复：任务已完成，清除进度信息
             };
           }
           
-          // 如果新任务没有 progress_info，但现有任务有，则保留现有的
-          if (!newTask.progress_info && existingTask.progress_info) {
+          // ⚡ 修复：如果任务状态是SUCCESS，清除旧的progress_info（避免显示过时的"正在求解"等信息）
+          if (newTask.status === "SUCCESS") {
+            return {
+              ...newTask,
+              progress_info: newTask.progress_info || null, // 使用服务器返回的最新progress_info（可能为null）
+            };
+          }
+          
+          // 如果新任务没有 progress_info，但现有任务有，则保留现有的（仅当任务未完成时）
+          if (!newTask.progress_info && existingTask.progress_info && newTask.status !== "SUCCESS") {
             return { ...newTask, progress_info: existingTask.progress_info };
           }
           
@@ -1289,10 +1301,12 @@ export default function TasksTable() {
         }
         
         // ⚡ 重要：先更新本地状态，确保状态立即反映在UI上
+        // ⚡ 修复：如果任务状态是SUCCESS，清除旧的进度信息（避免显示"正在求解"等过时信息）
         applyTaskUpdate(taskId, (task) => ({
           ...task,
           status: newStatus || task.status,
-          progress_info: data.progress_info || null,
+          // 如果任务已完成，使用服务器返回的最新progress_info（可能为null），否则使用服务器返回的progress_info
+          progress_info: isSuccess ? (data.progress_info || null) : (data.progress_info || task.progress_info),
           duration: data.duration ?? task.duration,
           elapsed_seconds: data.elapsed_seconds ?? task.elapsed_seconds,
           solver_type: data.solver_type || task.solver_type, // 确保求解器类型也被更新
@@ -1347,7 +1361,7 @@ export default function TasksTable() {
   // ⚡ 优化后的进度信息轮询：使用独立定时器，根据任务状态设置不同间隔
   // 使用任务 ID 列表作为依赖，避免因 baseRows 对象引用变化导致的无限循环
   const tasksToPollIds = useMemo(() => {
-    const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+    const runningStatuses = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING"]; // ⚡ 修复：添加DOWNLOADING状态
     const pendingStatuses = ["PENDING", "RETRY"];
     return baseRows
       .filter((task) => runningStatuses.includes(task.status) || pendingStatuses.includes(task.status))
@@ -1363,7 +1377,8 @@ export default function TasksTable() {
     const allTasks = Array.from(currentTasksRef.current.values());
     
     // 找出需要轮询的任务（运行中或等待中的任务）
-    const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+    // ⚡ 修复：添加DOWNLOADING状态，确保FLUENT等任务在下载阶段也能被轮询
+    const runningStatuses = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING"];
     const pendingStatuses = ["PENDING", "RETRY"];
     const tasksToPoll = allTasks.filter((task) => 
       runningStatuses.includes(task.status) || pendingStatuses.includes(task.status)
@@ -1392,9 +1407,10 @@ export default function TasksTable() {
 
     tasksToPoll.forEach((task) => {
       // 根据任务状态设置不同的轮询间隔
+      // ⚡ 修复：DOWNLOADING状态也视为运行中，使用较短的轮询间隔
       const isRunning = runningStatuses.includes(task.status);
       
-      // 运行中任务：30秒轮询一次（降低频率，减少后端压力）
+      // 运行中任务（包括DOWNLOADING）：30秒轮询一次（降低频率，减少后端压力）
       // 等待中任务：60秒轮询一次（频率更低）
       const pollInterval = isRunning ? 30000 : 60000;
 
@@ -1467,7 +1483,8 @@ export default function TasksTable() {
     // 从 ref 获取最新的任务列表，判断是否有运行中的任务
     const allTasks = Array.from(currentTasksRef.current.values());
     const runningTasks = allTasks.filter((task) => {
-      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED"];
+      // ⚡ 修复：添加DOWNLOADING状态，确保下载中的任务也能触发更频繁的轮询
+      const runningStatuses = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING"];
       return runningStatuses.includes(task.status);
     });
 
@@ -1722,7 +1739,7 @@ export default function TasksTable() {
               {statusTime}
             </div>
             {/* ✅ 显示执行进度信息（多求解器）*/}
-            {renderProgressInfo(task.progress_info, task.solver_type)}
+            {renderProgressInfo(task.progress_info, task.solver_type, task.status)}
           </td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{durationText}</td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{submittedAt}</td>
