@@ -1704,7 +1704,9 @@ export default function TasksTable() {
         <tr key={task.task_id} className="border-b last:border-b-0 align-top">
           <td className="px-3 py-2 font-medium text-gray-800">
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="whitespace-normal break-words">{task.job_name || "-"}</div>
+              <div className="truncate flex-1 min-w-0" title={task.job_name || "-"}>
+                {task.job_name || "-"}
+              </div>
               {/* ⭐ 新增：求解器类型标签 */}
               {task.solver_type && (
                 <span 
@@ -1736,9 +1738,11 @@ export default function TasksTable() {
             )}
           </td>
           <td className="px-3 py-2 font-mono text-xs text-gray-600 align-top">
-            <div className="break-all leading-5">{task.task_id}</div>
+            <div className="break-all leading-5 truncate" title={task.task_id}>
+              {task.task_id}
+            </div>
           </td>
-          <td className="px-3 py-2 text-center align-top" style={{ maxWidth: '280px', width: '280px' }}>
+          <td className="px-3 py-2 text-center align-top">
             <div className="flex flex-col items-center">
               <span 
                 className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}
@@ -1747,7 +1751,7 @@ export default function TasksTable() {
                 <span className="text-sm">{statusInfo.icon}</span>
                 <span>{statusInfo.label}</span>
               </span>
-              <div className="mt-2 text-xs text-gray-500" title={`状态更新时间: ${statusTime}`}>
+              <div className="mt-2 text-xs text-gray-500 truncate max-w-full" title={`状态更新时间: ${statusTime}`}>
                 {statusTime}
               </div>
               {/* ✅ 显示执行进度信息（多求解器）- 限制宽度，防止撑开表格 */}
@@ -1756,8 +1760,12 @@ export default function TasksTable() {
               </div>
             </div>
           </td>
-          <td className="px-3 py-2 text-sm text-gray-700 align-top">{durationText}</td>
-          <td className="px-3 py-2 text-sm text-gray-700 align-top">{submittedAt}</td>
+          <td className="px-3 py-2 text-sm text-gray-700 align-top text-center">
+            <div className="truncate" title={durationText}>{durationText}</div>
+          </td>
+          <td className="px-3 py-2 text-sm text-gray-700 align-top text-center">
+            <div className="truncate text-xs" title={submittedAt}>{submittedAt}</div>
+          </td>
           <td className="px-3 py-2 align-top">
             {task.outputsLoading ? (
               <span className="text-sm text-gray-500">结果加载中...</span>
@@ -1913,15 +1921,23 @@ export default function TasksTable() {
 
       <div className="mt-4 flex-1 overflow-hidden">
         <div className="h-full overflow-x-auto overflow-y-auto rounded-lg border">
-          <table className="min-w-max w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[16%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+              <col className="w-[28%]" />
+            </colgroup>
             <thead className="bg-gray-100 text-gray-600 sticky top-0">
               <tr>
-                <th className="min-w-[200px] px-3 py-2 text-left whitespace-nowrap">任务名称</th>
-                <th className="min-w-[280px] px-3 py-2 text-left whitespace-nowrap">Task ID</th>
-                <th className="min-w-[280px] max-w-[280px] px-3 py-2 whitespace-nowrap">状态</th>
-                <th className="min-w-[120px] px-3 py-2 whitespace-nowrap">执行时长</th>
-                <th className="min-w-[180px] px-3 py-2 whitespace-nowrap">提交时间</th>
-                <th className="min-w-[400px] px-3 py-2 text-left whitespace-nowrap">结果文件 / 操作</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap">任务名称</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap">Task ID</th>
+                <th className="px-3 py-2 text-center whitespace-nowrap">状态</th>
+                <th className="px-3 py-2 text-center whitespace-nowrap">执行时长</th>
+                <th className="px-3 py-2 text-center whitespace-nowrap">提交时间</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap">结果文件 / 操作</th>
               </tr>
             </thead>
             <tbody className="align-top">{renderBody()}</tbody>
