@@ -1816,16 +1816,31 @@ export default function TasksTable() {
   };
 
   return (
-    <div className="flex h-[580px] flex-col rounded-xl bg-white p-4 shadow">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="flex h-[580px] lg:h-[calc(100vh-12rem)] flex-col rounded-xl bg-white p-4 shadow">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div className="flex-1 min-w-0">
           <h2 className="text-lg font-semibold text-gray-900">任务列表</h2>
-          <p className="text-sm text-gray-500">查看任务状态、下载结果文件并可删除任务。</p>
+          <p className="text-sm text-gray-500 hidden lg:block">查看任务状态、下载结果文件并可删除任务。</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600" htmlFor="task-name-filter">
-              任务名称
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="hidden lg:flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+          title="回到顶部"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+          <span>回到顶部</span>
+        </button>
+      </div>
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-600 lg:hidden" htmlFor="task-name-filter">
+              名称
+            </label>
+            <label className="text-xs text-gray-500 hidden lg:inline" htmlFor="task-name-filter" title="任务名称">
+              🔍
             </label>
             <input
               id="task-name-filter"
@@ -1834,13 +1849,16 @@ export default function TasksTable() {
                 setPage(1);
                 setNameFilter(event.target.value);
               }}
-              placeholder="输入关键词"
-              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="搜索任务"
+              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 lg:w-32"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600" htmlFor="task-status-filter">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-600 lg:hidden" htmlFor="task-status-filter">
               状态
+            </label>
+            <label className="text-xs text-gray-500 hidden lg:inline" htmlFor="task-status-filter" title="任务状态">
+              📊
             </label>
             <select
               id="task-status-filter"
@@ -1849,7 +1867,7 @@ export default function TasksTable() {
                 setPage(1);
                 setStatusFilter(event.target.value);
               }}
-              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 lg:w-28"
             >
               {STATUS_FILTER_OPTIONS.map((option) => (
                 <option key={option.value || "all"} value={option.value}>
@@ -1858,9 +1876,12 @@ export default function TasksTable() {
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600" htmlFor="task-solver-type-filter">
-              求解器类型
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-600 lg:hidden" htmlFor="task-solver-type-filter">
+              求解器
+            </label>
+            <label className="text-xs text-gray-500 hidden lg:inline" htmlFor="task-solver-type-filter" title="求解器类型">
+              ⚙️
             </label>
             <select
               id="task-solver-type-filter"
@@ -1869,21 +1890,23 @@ export default function TasksTable() {
                 setPage(1);
                 setSolverTypeFilter(event.target.value);
               }}
-              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="rounded border px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 lg:w-32"
             >
               <option value="">全部类型</option>
-              <option value="speos">💡 SPEOS - 光学</option>
-              <option value="fluent">🌊 FLUENT - 流体</option>
-              <option value="maxwell">⚡ Maxwell - 电磁</option>
-              <option value="mechanical">🔧 Mechanical - 结构</option>
+              <option value="speos">💡 SPEOS</option>
+              <option value="fluent">🌊 FLUENT</option>
+              <option value="maxwell">⚡ Maxwell</option>
+              <option value="mechanical">🔧 Mechanical</option>
             </select>
           </div>
           <button
             onClick={handleRefresh}
-            className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+            className="rounded border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             disabled={loading}
+            title="刷新任务列表"
           >
-            刷新
+            <span className="lg:hidden">{loading ? "刷新中..." : "刷新"}</span>
+            <span className="hidden lg:inline">🔄</span>
           </button>
         </div>
       </div>
