@@ -482,7 +482,7 @@ function renderProgressInfo(
   }
 
   return (
-    <div className={`mt-2 rounded-lg bg-gradient-to-br ${colorTheme.bgGradient} border ${colorTheme.border} px-3 py-2 shadow-sm`}>
+    <div className={`mt-2 rounded-lg bg-gradient-to-br ${colorTheme.bgGradient} border ${colorTheme.border} px-2 py-1.5 shadow-sm w-full max-w-full overflow-hidden`}>
       {/* 主进度条 - 大而醒目（SPEOS 和有百分比的求解器）*/}
       {hasProgressPercent && (
         <div className="mb-2">
@@ -501,8 +501,8 @@ function renderProgressInfo(
         </div>
       )}
       
-      {/* 详细信息区域 */}
-      <div className="space-y-1.5">
+      {/* 详细信息区域 - 限制宽度，防止撑开表格 */}
+      <div className="space-y-1 w-full max-w-full overflow-hidden">
         {/* ========== SPEOS 进度 ========== */}
         {(normalizedSolverType === "speos" || !solverType) && (
           <>
@@ -607,22 +607,33 @@ function renderProgressInfo(
               </div>
             )}
             
-            {/* 进度消息 - 限制长度，避免显示过长 */}
+            {/* 进度消息 - 优化显示，避免影响表格布局 */}
             {progressInfo.message && (
-              <div className="flex items-start gap-2 bg-white/60 rounded-md px-2 py-1">
-                <span className="text-xs mt-0.5">💬</span>
-                <span className={`text-xs ${colorTheme.textPrimary} font-medium break-words line-clamp-3`} title={progressInfo.message}>
-                  {progressInfo.message.length > 150 ? `${progressInfo.message.substring(0, 150)}...` : progressInfo.message}
+              <div className="flex items-start gap-1.5 bg-white/60 rounded-md px-1.5 py-1 w-full max-w-full overflow-hidden">
+                <span className="text-xs mt-0.5 flex-shrink-0">💬</span>
+                <span 
+                  className={`text-xs ${colorTheme.textPrimary} font-medium flex-1 min-w-0 overflow-hidden`} 
+                  title={progressInfo.message}
+                  style={{ 
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'break-word',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
+                  {progressInfo.message.length > 80 ? `${progressInfo.message.substring(0, 80)}...` : progressInfo.message}
                 </span>
               </div>
             )}
             
             {/* 进度类型 */}
             {progressInfo.progress_type && (
-              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
-                <span className="text-xs">📋</span>
-                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>进度类型:</span>
-                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-1.5 py-1 w-full overflow-hidden">
+                <span className="text-xs flex-shrink-0">📋</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium flex-shrink-0`}>进度类型:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto truncate`}>
                   {progressInfo.progress_type === "solving" && "正在求解"}
                   {progressInfo.progress_type === "adaptive_pass" && "自适应网格细化"}
                   {progressInfo.progress_type === "computing" && "正在计算"}
@@ -635,9 +646,9 @@ function renderProgressInfo(
             
             {/* 自适应 Pass */}
             {hasPassInfo && (
-              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
-                <span className="text-xs">🔄</span>
-                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>自适应 Pass:</span>
+              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-1.5 py-1 w-full overflow-hidden">
+                <span className="text-xs flex-shrink-0">🔄</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium flex-shrink-0`}>自适应 Pass:</span>
                 <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
                   {current_pass}{total_passes ? `/${total_passes}` : ""}
                 </span>
@@ -646,16 +657,16 @@ function renderProgressInfo(
             
             {/* 状态（兼容旧字段） */}
             {status && !progressInfo.progress_type && (
-              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
-                <span className="text-xs">📊</span>
-                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>状态:</span>
-                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{status}</span>
+              <div className="flex items-center gap-1.5 bg-white/60 rounded-md px-1.5 py-1 w-full overflow-hidden">
+                <span className="text-xs flex-shrink-0">📊</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium flex-shrink-0`}>状态:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto truncate`}>{status}</span>
               </div>
             )}
             
             {/* 收敛状态 */}
             {converged && (
-              <div className="flex items-center gap-1 bg-green-100 rounded-md px-2 py-1">
+              <div className="flex items-center gap-1 bg-green-100 rounded-md px-1.5 py-1 w-full">
                 <span className="text-xs">✅</span>
                 <span className="text-xs text-green-700 font-medium">已收敛</span>
               </div>
@@ -1727,19 +1738,23 @@ export default function TasksTable() {
           <td className="px-3 py-2 font-mono text-xs text-gray-600 align-top">
             <div className="break-all leading-5">{task.task_id}</div>
           </td>
-          <td className="px-3 py-2 text-center align-top">
-            <span 
-              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}
-              title={statusInfo.description}
-            >
-              <span className="text-sm">{statusInfo.icon}</span>
-              <span>{statusInfo.label}</span>
-            </span>
-            <div className="mt-2 text-xs text-gray-500" title={`状态更新时间: ${statusTime}`}>
-              {statusTime}
+          <td className="px-3 py-2 text-center align-top" style={{ maxWidth: '280px', width: '280px' }}>
+            <div className="flex flex-col items-center">
+              <span 
+                className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}
+                title={statusInfo.description}
+              >
+                <span className="text-sm">{statusInfo.icon}</span>
+                <span>{statusInfo.label}</span>
+              </span>
+              <div className="mt-2 text-xs text-gray-500" title={`状态更新时间: ${statusTime}`}>
+                {statusTime}
+              </div>
+              {/* ✅ 显示执行进度信息（多求解器）- 限制宽度，防止撑开表格 */}
+              <div className="w-full mt-2">
+                {renderProgressInfo(task.progress_info, task.solver_type, task.status)}
+              </div>
             </div>
-            {/* ✅ 显示执行进度信息（多求解器）*/}
-            {renderProgressInfo(task.progress_info, task.solver_type, task.status)}
           </td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{durationText}</td>
           <td className="px-3 py-2 text-sm text-gray-700 align-top">{submittedAt}</td>
@@ -1880,7 +1895,7 @@ export default function TasksTable() {
               <tr>
                 <th className="min-w-[200px] px-3 py-2 text-left whitespace-nowrap">任务名称</th>
                 <th className="min-w-[280px] px-3 py-2 text-left whitespace-nowrap">Task ID</th>
-                <th className="min-w-[240px] px-3 py-2 whitespace-nowrap">状态</th>
+                <th className="min-w-[280px] max-w-[280px] px-3 py-2 whitespace-nowrap">状态</th>
                 <th className="min-w-[120px] px-3 py-2 whitespace-nowrap">执行时长</th>
                 <th className="min-w-[180px] px-3 py-2 whitespace-nowrap">提交时间</th>
                 <th className="min-w-[400px] px-3 py-2 text-left whitespace-nowrap">结果文件 / 操作</th>
