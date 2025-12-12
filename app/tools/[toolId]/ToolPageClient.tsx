@@ -65,9 +65,9 @@ export default function ToolPageClient({ toolId, solverType }: ToolPageClientPro
 
   return (
     <>
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* 左侧：提交表单 */}
-        <div className="flex-1 lg:max-w-xl xl:max-w-2xl">
+        <div className="flex-1 lg:max-w-md xl:max-w-lg">
           <div className="lg:sticky lg:top-6">
             <UploadForm 
               defaultSolverType={solverType} 
@@ -76,8 +76,8 @@ export default function ToolPageClient({ toolId, solverType }: ToolPageClientPro
           </div>
         </div>
         
-        {/* 右侧：任务列表 - 桌面端占用更多空间 */}
-        <div ref={tasksTableRef} className="flex-1 lg:flex-[1.5] xl:flex-[2] min-w-0">
+        {/* 右侧：任务列表 - 占用更多空间 */}
+        <div ref={tasksTableRef} className="flex-1 lg:flex-[2] xl:flex-[2.5] min-w-0">
           <div className="lg:sticky lg:top-6">
             <TasksTable />
           </div>

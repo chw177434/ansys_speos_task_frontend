@@ -34,8 +34,8 @@ export default async function ToolPage({ params }: ToolPageProps) {
   const currentSolver = solverConfig[tool.id] || { icon: "📊", color: "border-gray-200 bg-gray-50 text-gray-700" };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6 sm:p-10">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+    <main className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="mx-auto flex max-w-[98%] xl:max-w-[95%] 2xl:max-w-[90%] flex-col gap-6">
         <ToolUsageTracker toolId={tool.id} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
