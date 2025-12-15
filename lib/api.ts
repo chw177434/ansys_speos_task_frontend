@@ -220,8 +220,8 @@ export interface DirectUploadParams {
   task_id?: string;  // 提供 task_id 时，使用已上传的文件，不需要重新上传
   
   // 必需参数
-  profile_name: string;
-  version: string;
+  profile_name?: string;  // ⚡ SPEOS模式下不再需要
+  version?: string;       // ⚡ SPEOS模式下不再需要
   job_name: string;
   
   // ⭐ 新增：求解器类型（默认 "speos"）
@@ -285,8 +285,8 @@ export async function submitDirectUpload(
     }
     
     // 添加必需参数
-    formData.append("profile_name", params.profile_name);
-    formData.append("version", params.version);
+    if (params.profile_name) formData.append("profile_name", params.profile_name);
+    if (params.version) formData.append("version", params.version);
     formData.append("job_name", params.job_name);
     
     // ⭐ 关键修复：添加 solver_type 参数（默认 "speos"）
@@ -447,8 +447,8 @@ export interface ConfirmUploadRequest {
   include_object_key?: string;
   job_name: string;
   submitter?: string;
-  profile_name: string;
-  version: string;
+  profile_name?: string;  // ⚡ SPEOS模式下不再需要
+  version?: string;       // ⚡ SPEOS模式下不再需要
   project_dir?: string;
   
   // ⭐ 新增：求解器类型（默认 "speos"）

@@ -123,45 +123,52 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
   const [jobName, setJobName] = useState(initialState.jobName);
   const [projectDir, setProjectDir] = useState(initialState.projectDir);
 
-  const [useGpu, setUseGpu] = useState(Boolean(initialState.useGpu));
-  const [simulationIndex, setSimulationIndex] = useState(initialState.simulationIndex ?? "0");
-  const [threadCount, setThreadCount] = useState(initialState.threadCount ?? "");
-  const [priority, setPriority] = useState(initialState.priority ?? "2");
-  const [rayCount, setRayCount] = useState(initialState.rayCount ?? "");
-  const [durationMinutes, setDurationMinutes] = useState(initialState.durationMinutes ?? "");
-  const [hpcJobName, setHpcJobName] = useState(initialState.hpcJobName ?? "");
-  const [nodeCount, setNodeCount] = useState(initialState.nodeCount ?? "1");
-  const [walltimeHours, setWalltimeHours] = useState(initialState.walltimeHours ?? "");
-  
   // ⭐ 新增：求解器类型选择（使用传入的默认值或 SPEOS）
   const [solverType, setSolverType] = useState<SolverType>(defaultSolverType);
   
-  // ⭐ 新增：FLUENT 参数（默认值参考 FLUENT_FRONTEND_GUIDE.md）
-  const [dimension, setDimension] = useState<"2d" | "3d">("3d");
-  const [precision, setPrecision] = useState<"sp" | "dp">("dp");
-  const [iterations, setIterations] = useState<number>(300);  // 默认 300
-  const [initializationMethod, setInitializationMethod] = useState<"hyb" | "standard">("standard");  // 默认 standard
+  // ⚡ 高级配置字段 - 移除所有默认值，改为空值
+  const [useGpu, setUseGpu] = useState(false);
+  const [simulationIndex, setSimulationIndex] = useState("");
+  const [threadCount, setThreadCount] = useState("");
+  const [priority, setPriority] = useState("");
+  const [rayCount, setRayCount] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [hpcJobName, setHpcJobName] = useState("");
+  const [nodeCount, setNodeCount] = useState("");
+  const [walltimeHours, setWalltimeHours] = useState("");
   
-  // ⭐ 新增：Maxwell/Mechanical 参数
-  const [numCores, setNumCores] = useState("32"); // 根据文档，Maxwell 默认值为 32 核
+  // ⭐ FLUENT 参数 - 移除默认值
+  const [dimension, setDimension] = useState<"2d" | "3d" | "">("");
+  const [precision, setPrecision] = useState<"sp" | "dp" | "">("");
+  const [iterations, setIterations] = useState<number | "">("");
+  const [initializationMethod, setInitializationMethod] = useState<"hyb" | "standard" | "">("");
+  
+  // ⭐ Maxwell/Mechanical 参数 - 移除默认值
+  const [numCores, setNumCores] = useState("");
   const [designName, setDesignName] = useState("");
-  
-  // ⭐ 新增：Mechanical 任务标识（用于文件命名）
+
+  // ⭐ Mechanical 任务标识（用于文件命名）
   const [jobKey, setJobKey] = useState("");
 
-  const [showAdvanced, setShowAdvanced] = useState(() => {
-    return (
-      Boolean(initialState.useGpu) ||
-      Boolean(initialState.simulationIndex && initialState.simulationIndex !== "0") ||
-      Boolean(initialState.threadCount) ||
-      Boolean(initialState.priority && initialState.priority !== "2") ||
-      Boolean(initialState.rayCount) ||
-      Boolean(initialState.durationMinutes) ||
-      Boolean(initialState.hpcJobName) ||
-      Boolean(initialState.nodeCount && initialState.nodeCount !== "1") ||
-      Boolean(initialState.walltimeHours)
-    );
-  });
+  // ⚡ 用户修改跟踪：记录哪些字段被用户明确修改过
+  const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
+  
+  // 辅助函数：标记字段为已修改
+  const markFieldModified = (fieldName: string) => {
+    setModifiedFields(prev => new Set(prev).add(fieldName));
+  };
+
+  // ⚡ 辅助函数：只在字段被用户修改过且非空时才包含在提交参数中
+  const includeIfModified = (fieldName: string, value: string | number | boolean | "" | undefined): any => {
+    if (!modifiedFields.has(fieldName)) return undefined;
+    if (typeof value === "string" && !value.trim()) return undefined;
+    if (typeof value === "number" && !Number.isFinite(value)) return undefined;
+    if (typeof value === "boolean" && !value) return undefined;
+    if (value === "" || value === null || value === undefined) return undefined;
+    return value;
+  };
+
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [masterFile, setMasterFile] = useState<File | null>(null);
   const [includeFile, setIncludeFile] = useState<File | null>(null);
@@ -249,22 +256,30 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
   }, []);
 
   const resetForm = useCallback(() => {
-    setProfileName(DEFAULT_FORM_STATE.profileName);
-    setVersion(DEFAULT_FORM_STATE.version);
-    setJobName(DEFAULT_FORM_STATE.jobName);
-    setProjectDir(DEFAULT_FORM_STATE.projectDir);
-    setUseGpu(Boolean(DEFAULT_FORM_STATE.useGpu));
-    setSimulationIndex(DEFAULT_FORM_STATE.simulationIndex ?? "0");
-    setThreadCount(DEFAULT_FORM_STATE.threadCount ?? "");
-    setPriority(DEFAULT_FORM_STATE.priority ?? "2");
-    setRayCount(DEFAULT_FORM_STATE.rayCount ?? "");
-    setDurationMinutes(DEFAULT_FORM_STATE.durationMinutes ?? "");
-    setHpcJobName(DEFAULT_FORM_STATE.hpcJobName ?? "");
-    setNodeCount(DEFAULT_FORM_STATE.nodeCount ?? "1");
-    setWalltimeHours(DEFAULT_FORM_STATE.walltimeHours ?? "");
+    setProfileName("");
+    setVersion("");
+    setJobName("");
+    setProjectDir("");
+    setUseGpu(false);
+    setSimulationIndex("");
+    setThreadCount("");
+    setPriority("");
+    setRayCount("");
+    setDurationMinutes("");
+    setHpcJobName("");
+    setNodeCount("");
+    setWalltimeHours("");
+    setDimension("");
+    setPrecision("");
+    setIterations("");
+    setInitializationMethod("");
+    setNumCores("");
+    setDesignName("");
+    setJobKey("");
     setMasterFile(null);
     setIncludeFile(null);
     setShowAdvanced(false);
+    setModifiedFields(new Set());
     if (masterInputRef.current) {
       masterInputRef.current.value = "";
     }
@@ -462,44 +477,42 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       const params: DirectUploadParams = {
         master_file: masterFile,
         include_file: includeArchive || undefined,
-        profile_name: profileName.trim(),
-        version: version.trim(),
         job_name: jobName.trim(),
         project_dir: projectDir.trim() || undefined,
         solver_type: solverType, // ⭐ 添加求解器类型
         
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
-          use_gpu: useGpu || undefined,
-          simulation_index: simulationIndex.trim() || undefined,
-          thread_count: threadCount.trim() || undefined,
-          priority: priority.trim() || undefined,
-          ray_count: rayCount.trim() || undefined,
-          duration_minutes: durationMinutes.trim() || undefined,
-          hpc_job_name: hpcJobName.trim() || undefined,
-          node_count: nodeCount.trim() || undefined,
-          walltime_hours: walltimeHours.trim() || undefined,
+          use_gpu: includeIfModified("useGpu", useGpu),
+          simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
+          thread_count: includeIfModified("threadCount", threadCount.trim()),
+          priority: includeIfModified("priority", priority.trim()),
+          ray_count: includeIfModified("rayCount", rayCount.trim()),
+          duration_minutes: includeIfModified("durationMinutes", durationMinutes.trim()),
+          hpc_job_name: includeIfModified("hpcJobName", hpcJobName.trim()),
+          node_count: includeIfModified("nodeCount", nodeCount.trim()),
+          walltime_hours: includeIfModified("walltimeHours", walltimeHours.trim()),
         }),
         
         // ========== FLUENT 参数 ==========
         ...(solverType === "fluent" && {
-          dimension,
-          precision,
-          iterations,
-          initialization_method: initializationMethod,
-          thread_count: threadCount.trim() || undefined,
+          ...(includeIfModified("dimension", dimension) && dimension && { dimension: dimension as "2d" | "3d" }),
+          ...(includeIfModified("precision", precision) && precision && { precision: precision as "sp" | "dp" }),
+          ...(includeIfModified("iterations", iterations) && typeof iterations === "number" && { iterations }),
+          ...(includeIfModified("initializationMethod", initializationMethod) && initializationMethod && { initialization_method: initializationMethod as "hyb" | "standard" }),
+          ...(includeIfModified("threadCount", threadCount.trim()) && { thread_count: threadCount.trim() }),
         }),
         
         // ========== Maxwell 参数 ==========
         ...(solverType === "maxwell" && {
-          num_cores: numCores.trim() || undefined,
-          design_name: designName.trim() || undefined,
+          num_cores: includeIfModified("numCores", numCores.trim()),
+          design_name: includeIfModified("designName", designName.trim()),
         }),
         
         // ========== Mechanical 参数 ==========
         ...(solverType === "mechanical" && {
-          thread_count: threadCount.trim() || undefined,
-          job_key: jobKey.trim() || undefined,
+          thread_count: includeIfModified("threadCount", threadCount.trim()),
+          job_key: includeIfModified("jobKey", jobKey.trim()),
         }),
       };
 
@@ -906,44 +919,42 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       const params: DirectUploadParams = {
         // 方式2：基于已上传文件（新方式）
         task_id: masterTaskId,  // ⚡ 使用 master 文件的 task_id，确保与上传时一致
-        profile_name: profileName.trim(),
-        version: version.trim(),
         job_name: jobName.trim(),
         project_dir: projectDir.trim() || undefined,
         solver_type: solverType, // ⭐ 添加求解器类型
         
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
-          use_gpu: useGpu || undefined,
-          simulation_index: simulationIndex.trim() || undefined,
-          thread_count: threadCount.trim() || undefined,
-          priority: priority.trim() || undefined,
-          ray_count: rayCount.trim() || undefined,
-          duration_minutes: durationMinutes.trim() || undefined,
-          hpc_job_name: hpcJobName.trim() || undefined,
-          node_count: nodeCount.trim() || undefined,
-          walltime_hours: walltimeHours.trim() || undefined,
+          use_gpu: includeIfModified("useGpu", useGpu),
+          simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
+          thread_count: includeIfModified("threadCount", threadCount.trim()),
+          priority: includeIfModified("priority", priority.trim()),
+          ray_count: includeIfModified("rayCount", rayCount.trim()),
+          duration_minutes: includeIfModified("durationMinutes", durationMinutes.trim()),
+          hpc_job_name: includeIfModified("hpcJobName", hpcJobName.trim()),
+          node_count: includeIfModified("nodeCount", nodeCount.trim()),
+          walltime_hours: includeIfModified("walltimeHours", walltimeHours.trim()),
         }),
         
         // ========== FLUENT 参数 ==========
         ...(solverType === "fluent" && {
-          dimension,
-          precision,
-          iterations,
-          initialization_method: initializationMethod,
-          thread_count: threadCount.trim() || undefined,
+          ...(includeIfModified("dimension", dimension) && dimension && { dimension: dimension as "2d" | "3d" }),
+          ...(includeIfModified("precision", precision) && precision && { precision: precision as "sp" | "dp" }),
+          ...(includeIfModified("iterations", iterations) && typeof iterations === "number" && { iterations }),
+          ...(includeIfModified("initializationMethod", initializationMethod) && initializationMethod && { initialization_method: initializationMethod as "hyb" | "standard" }),
+          ...(includeIfModified("threadCount", threadCount.trim()) && { thread_count: threadCount.trim() }),
         }),
         
         // ========== Maxwell 参数 ==========
         ...(solverType === "maxwell" && {
-          num_cores: numCores.trim() || undefined,
-          design_name: designName.trim() || undefined,
+          num_cores: includeIfModified("numCores", numCores.trim()),
+          design_name: includeIfModified("designName", designName.trim()),
         }),
         
         // ========== Mechanical 参数 ==========
         ...(solverType === "mechanical" && {
-          thread_count: threadCount.trim() || undefined,
-          job_key: jobKey.trim() || undefined,
+          thread_count: includeIfModified("threadCount", threadCount.trim()),
+          job_key: includeIfModified("jobKey", jobKey.trim()),
         }),
       };
 
@@ -1248,8 +1259,6 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     setUploadStep("正在提交任务...");
 
     const formData = new FormData();
-    formData.append("profile_name", profileName.trim());
-    formData.append("version", version.trim());
     formData.append("job_name", jobName.trim());
     formData.append("master_file", masterFile, masterFile.name);
     
@@ -1267,46 +1276,47 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
 
     // ========== SPEOS 参数 ==========
     if (solverType === "speos") {
-      if (useGpu) {
+      const useGpuValue = includeIfModified("useGpu", useGpu);
+      if (useGpuValue) {
         formData.append("use_gpu", "true");
       }
 
-      const trimmedSimulation = simulationIndex.trim();
+      const trimmedSimulation = includeIfModified("simulationIndex", simulationIndex.trim());
       if (trimmedSimulation) {
         formData.append("simulation_index", trimmedSimulation);
       }
 
-      const trimmedThreads = threadCount.trim();
+      const trimmedThreads = includeIfModified("threadCount", threadCount.trim());
       if (trimmedThreads) {
         formData.append("thread_count", trimmedThreads);
       }
 
-      const trimmedPriority = priority.trim();
+      const trimmedPriority = includeIfModified("priority", priority.trim());
       if (trimmedPriority) {
         formData.append("priority", trimmedPriority);
       }
 
-      const trimmedRays = rayCount.trim();
+      const trimmedRays = includeIfModified("rayCount", rayCount.trim());
       if (trimmedRays) {
         formData.append("ray_count", trimmedRays);
       }
 
-      const trimmedDuration = durationMinutes.trim();
+      const trimmedDuration = includeIfModified("durationMinutes", durationMinutes.trim());
       if (trimmedDuration) {
         formData.append("duration_minutes", trimmedDuration);
       }
 
-      const trimmedJobName = hpcJobName.trim();
+      const trimmedJobName = includeIfModified("hpcJobName", hpcJobName.trim());
       if (trimmedJobName) {
         formData.append("hpc_job_name", trimmedJobName);
       }
 
-      const trimmedNodes = nodeCount.trim();
+      const trimmedNodes = includeIfModified("nodeCount", nodeCount.trim());
       if (trimmedNodes) {
         formData.append("node_count", trimmedNodes);
       }
 
-      const trimmedWalltime = walltimeHours.trim();
+      const trimmedWalltime = includeIfModified("walltimeHours", walltimeHours.trim());
       if (trimmedWalltime) {
         formData.append("walltime_hours", trimmedWalltime);
       }
@@ -1314,12 +1324,27 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     
     // ========== FLUENT 参数 ==========
     if (solverType === "fluent") {
-      formData.append("dimension", dimension);
-      formData.append("precision", precision);
-      formData.append("iterations", String(iterations));
-      formData.append("initialization_method", initializationMethod);
+      const dimensionValue = includeIfModified("dimension", dimension);
+      if (dimensionValue) {
+        formData.append("dimension", dimensionValue);
+      }
       
-      const trimmedThreads = threadCount.trim();
+      const precisionValue = includeIfModified("precision", precision);
+      if (precisionValue) {
+        formData.append("precision", precisionValue);
+      }
+      
+      const iterationsValue = includeIfModified("iterations", iterations);
+      if (iterationsValue) {
+        formData.append("iterations", String(iterationsValue));
+      }
+      
+      const initMethodValue = includeIfModified("initializationMethod", initializationMethod);
+      if (initMethodValue) {
+        formData.append("initialization_method", initMethodValue);
+      }
+      
+      const trimmedThreads = includeIfModified("threadCount", threadCount.trim());
       if (trimmedThreads) {
         formData.append("thread_count", trimmedThreads);
       }
@@ -1327,12 +1352,12 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     
     // ========== Maxwell 参数 ==========
     if (solverType === "maxwell") {
-      const trimmedCores = numCores.trim();
+      const trimmedCores = includeIfModified("numCores", numCores.trim());
       if (trimmedCores) {
         formData.append("num_cores", trimmedCores);
       }
       
-      const trimmedDesign = designName.trim();
+      const trimmedDesign = includeIfModified("designName", designName.trim());
       if (trimmedDesign) {
         formData.append("design_name", trimmedDesign);
       }
@@ -1482,43 +1507,41 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       include_object_key: includeObjectKey,
       job_name: jobName.trim(),
       submitter: "用户",
-      profile_name: profileName.trim(),
-      version: version.trim(),
       project_dir: projectDir.trim() || undefined,
       solver_type: solverType, // ⭐ 添加求解器类型
       
       // ========== SPEOS 参数 ==========
       ...(solverType === "speos" && {
-        use_gpu: useGpu || undefined,
-        simulation_index: simulationIndex.trim() || undefined,
-        thread_count: threadCount.trim() || undefined,
-        priority: priority.trim() || undefined,
-        ray_count: rayCount.trim() || undefined,
-        duration_minutes: durationMinutes.trim() || undefined,
-        hpc_job_name: hpcJobName.trim() || undefined,
-        node_count: nodeCount.trim() || undefined,
-        walltime_hours: walltimeHours.trim() || undefined,
+        use_gpu: includeIfModified("useGpu", useGpu),
+        simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
+        thread_count: includeIfModified("threadCount", threadCount.trim()),
+        priority: includeIfModified("priority", priority.trim()),
+        ray_count: includeIfModified("rayCount", rayCount.trim()),
+        duration_minutes: includeIfModified("durationMinutes", durationMinutes.trim()),
+        hpc_job_name: includeIfModified("hpcJobName", hpcJobName.trim()),
+        node_count: includeIfModified("nodeCount", nodeCount.trim()),
+        walltime_hours: includeIfModified("walltimeHours", walltimeHours.trim()),
       }),
       
       // ========== FLUENT 参数 ==========
       ...(solverType === "fluent" && {
-        dimension,
-        precision,
-        iterations,
-        initialization_method: initializationMethod,
-        thread_count: threadCount.trim() || undefined,
+        ...(includeIfModified("dimension", dimension) && dimension && { dimension: dimension as "2d" | "3d" }),
+        ...(includeIfModified("precision", precision) && precision && { precision: precision as "sp" | "dp" }),
+        ...(includeIfModified("iterations", iterations) && typeof iterations === "number" && { iterations }),
+        ...(includeIfModified("initializationMethod", initializationMethod) && initializationMethod && { initialization_method: initializationMethod as "hyb" | "standard" }),
+        ...(includeIfModified("threadCount", threadCount.trim()) && { thread_count: threadCount.trim() }),
       }),
       
       // ========== Maxwell 参数 ==========
       ...(solverType === "maxwell" && {
-        num_cores: numCores.trim() || undefined,
-        design_name: designName.trim() || undefined,
+        num_cores: includeIfModified("numCores", numCores.trim()),
+        design_name: includeIfModified("designName", designName.trim()),
       }),
       
       // ========== Mechanical 参数 ==========
       ...(solverType === "mechanical" && {
-        thread_count: threadCount.trim() || undefined,
-        job_key: jobKey.trim() || undefined,
+        thread_count: includeIfModified("threadCount", threadCount.trim()),
+        job_key: includeIfModified("jobKey", jobKey.trim()),
       }),
     });
 
@@ -1697,43 +1720,41 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         include_object_key: includeObjectKey || undefined,
         job_name: jobName.trim(),
         submitter: "用户",
-        profile_name: profileName.trim(),
-        version: version.trim(),
         project_dir: projectDir.trim() || undefined,
         solver_type: solverType, // ⭐ 添加求解器类型
         
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
-          use_gpu: useGpu || undefined,
-          simulation_index: simulationIndex.trim() || undefined,
-          thread_count: threadCount.trim() || undefined,
-          priority: priority.trim() || undefined,
-          ray_count: rayCount.trim() || undefined,
-          duration_minutes: durationMinutes.trim() || undefined,
-          hpc_job_name: hpcJobName.trim() || undefined,
-          node_count: nodeCount.trim() || undefined,
-          walltime_hours: walltimeHours.trim() || undefined,
+          use_gpu: includeIfModified("useGpu", useGpu),
+          simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
+          thread_count: includeIfModified("threadCount", threadCount.trim()),
+          priority: includeIfModified("priority", priority.trim()),
+          ray_count: includeIfModified("rayCount", rayCount.trim()),
+          duration_minutes: includeIfModified("durationMinutes", durationMinutes.trim()),
+          hpc_job_name: includeIfModified("hpcJobName", hpcJobName.trim()),
+          node_count: includeIfModified("nodeCount", nodeCount.trim()),
+          walltime_hours: includeIfModified("walltimeHours", walltimeHours.trim()),
         }),
         
         // ========== FLUENT 参数 ==========
         ...(solverType === "fluent" && {
-          dimension,
-          precision,
-          iterations,
-          initialization_method: initializationMethod,
-          thread_count: threadCount.trim() || undefined,
+          ...(includeIfModified("dimension", dimension) && dimension && { dimension: dimension as "2d" | "3d" }),
+          ...(includeIfModified("precision", precision) && precision && { precision: precision as "sp" | "dp" }),
+          ...(includeIfModified("iterations", iterations) && typeof iterations === "number" && { iterations }),
+          ...(includeIfModified("initializationMethod", initializationMethod) && initializationMethod && { initialization_method: initializationMethod as "hyb" | "standard" }),
+          ...(includeIfModified("threadCount", threadCount.trim()) && { thread_count: threadCount.trim() }),
         }),
         
         // ========== Maxwell 参数 ==========
         ...(solverType === "maxwell" && {
-          num_cores: numCores.trim() || undefined,
-          design_name: designName.trim() || undefined,
+          num_cores: includeIfModified("numCores", numCores.trim()),
+          design_name: includeIfModified("designName", designName.trim()),
         }),
         
         // ========== Mechanical 参数 ==========
         ...(solverType === "mechanical" && {
-          thread_count: threadCount.trim() || undefined,
-          job_key: jobKey.trim() || undefined,
+          thread_count: includeIfModified("threadCount", threadCount.trim()),
+          job_key: includeIfModified("jobKey", jobKey.trim()),
         }),
       });
 
@@ -2017,28 +2038,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5 overflow-auto pr-1">
         <div className="grid gap-4">
-          {/* ⭐ SPEOS 特有参数：Profile Name 和 Version */}
-          {solverType === "speos" && (
-            <>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Profile Name</label>
-                <input
-                  value={profileName}
-                  onChange={(event) => setProfileName(event.target.value)}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Version</label>
-                <input
-                  value={version}
-                  onChange={(event) => setVersion(event.target.value)}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </>
-          )}
+          {/* ⭐ SPEOS 特有参数：Profile Name 和 Version - 已隐藏，不再需要 */}
 
           {/* ⭐ 通用参数：Job Name（所有求解器都需要）*/}
           <div>
@@ -2208,7 +2208,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       <input
                         type="checkbox"
                         checked={useGpu}
-                        onChange={(event) => setUseGpu(event.target.checked)}
+                        onChange={(event) => {
+                          setUseGpu(event.target.checked);
+                          markFieldModified("useGpu");
+                        }}
                       />
                       启用
                     </label>
@@ -2221,7 +2224,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     type="number"
                     min={0}
                     value={simulationIndex}
-                    onChange={(event) => setSimulationIndex(event.target.value)}
+                    onChange={(event) => {
+                      setSimulationIndex(event.target.value);
+                      markFieldModified("simulationIndex");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -2231,7 +2237,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     type="number"
                     min={1}
                     value={threadCount}
-                    onChange={(event) => setThreadCount(event.target.value)}
+                    onChange={(event) => {
+                      setThreadCount(event.target.value);
+                      markFieldModified("threadCount");
+                    }}
                     placeholder="自动"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2240,7 +2249,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   <label className="mb-1 block text-sm font-medium text-slate-700">进程优先级 (-p)</label>
                   <select
                     value={priority}
-                    onChange={(event) => setPriority(event.target.value)}
+                    onChange={(event) => {
+                      setPriority(event.target.value);
+                      markFieldModified("priority");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
                     {PRIORITY_OPTIONS.map((item) => (
@@ -2256,7 +2268,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     type="number"
                     min={1}
                     value={rayCount}
-                    onChange={(event) => setRayCount(event.target.value)}
+                    onChange={(event) => {
+                      setRayCount(event.target.value);
+                      markFieldModified("rayCount");
+                    }}
                     placeholder="使用默认"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2267,7 +2282,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     type="number"
                     min={1}
                     value={durationMinutes}
-                    onChange={(event) => setDurationMinutes(event.target.value)}
+                    onChange={(event) => {
+                      setDurationMinutes(event.target.value);
+                      markFieldModified("durationMinutes");
+                    }}
                     placeholder="不限"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2276,7 +2294,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   <label className="mb-1 block text-sm font-medium text-slate-700">HPC Job 名称 (-J)</label>
                   <input
                     value={hpcJobName}
-                    onChange={(event) => setHpcJobName(event.target.value)}
+                    onChange={(event) => {
+                      setHpcJobName(event.target.value);
+                      markFieldModified("hpcJobName");
+                    }}
                     placeholder="可选"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2287,7 +2308,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     type="number"
                     min={1}
                     value={nodeCount}
-                    onChange={(event) => setNodeCount(event.target.value)}
+                    onChange={(event) => {
+                      setNodeCount(event.target.value);
+                      markFieldModified("nodeCount");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -2298,7 +2322,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     min={1}
                     step={0.5}
                     value={walltimeHours}
-                    onChange={(event) => setWalltimeHours(event.target.value)}
+                    onChange={(event) => {
+                      setWalltimeHours(event.target.value);
+                      markFieldModified("walltimeHours");
+                    }}
                     placeholder="可选"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2330,24 +2357,44 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setIterations(50);
                       setThreadCount("4");
                       setInitializationMethod("standard");
+                      markFieldModified("dimension");
+                      markFieldModified("precision");
+                      markFieldModified("iterations");
+                      markFieldModified("threadCount");
+                      markFieldModified("initializationMethod");
                     } else if (preset === "standard") {
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(300);
                       setThreadCount("32");
                       setInitializationMethod("hyb");
+                      markFieldModified("dimension");
+                      markFieldModified("precision");
+                      markFieldModified("iterations");
+                      markFieldModified("threadCount");
+                      markFieldModified("initializationMethod");
                     } else if (preset === "high_accuracy") {
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(1000);
                       setThreadCount("64");
                       setInitializationMethod("hyb");
+                      markFieldModified("dimension");
+                      markFieldModified("precision");
+                      markFieldModified("iterations");
+                      markFieldModified("threadCount");
+                      markFieldModified("initializationMethod");
                     } else if (preset === "transient") {
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(5000);
                       setThreadCount("128");
                       setInitializationMethod("hyb");
+                      markFieldModified("dimension");
+                      markFieldModified("precision");
+                      markFieldModified("iterations");
+                      markFieldModified("threadCount");
+                      markFieldModified("initializationMethod");
                     }
                     // 重置选择框
                     event.target.value = "";
@@ -2374,7 +2421,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   </label>
                   <select
                     value={dimension}
-                    onChange={(event) => setDimension(event.target.value as "2d" | "3d")}
+                    onChange={(event) => {
+                      setDimension(event.target.value as "2d" | "3d" | "");
+                      markFieldModified("dimension");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="2d">2D</option>
@@ -2392,9 +2442,13 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   </label>
                   <select
                     value={precision}
-                    onChange={(event) => setPrecision(event.target.value as "sp" | "dp")}
+                    onChange={(event) => {
+                      setPrecision(event.target.value as "sp" | "dp" | "");
+                      markFieldModified("precision");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
+                    <option value="">请选择</option>
                     <option value="sp">单精度 (sp) - 快速</option>
                     <option value="dp">双精度 (dp) - 推荐</option>
                   </select>
@@ -2420,13 +2474,16 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     min={1}
                     max={10000}
                     value={iterations}
-                    onChange={(event) => setIterations(Number(event.target.value))}
+                    onChange={(event) => {
+                      setIterations(Number(event.target.value) || "");
+                      markFieldModified("iterations");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     计算的迭代次数。简单流动 100-200 步，复杂流动 500-1000 步。
                   </p>
-                  {iterations < 100 && (
+                  {typeof iterations === "number" && iterations < 100 && (
                     <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
                       <p className="text-xs text-amber-700">
                         ⚠️ 迭代步数较少，可能无法充分收敛
@@ -2442,9 +2499,13 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   </label>
                   <select
                     value={initializationMethod}
-                    onChange={(event) => setInitializationMethod(event.target.value as "hyb" | "standard")}
+                    onChange={(event) => {
+                      setInitializationMethod(event.target.value as "hyb" | "standard" | "");
+                      markFieldModified("initializationMethod");
+                    }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
+                    <option value="">请选择</option>
                     <option value="standard">标准初始化 (standard)</option>
                     <option value="hyb">混合初始化 (hyb) - 推荐</option>
                   </select>
@@ -2463,7 +2524,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     min={1}
                     max={128}
                     value={threadCount}
-                    onChange={(event) => setThreadCount(event.target.value)}
+                    onChange={(event) => {
+                      setThreadCount(event.target.value);
+                      markFieldModified("threadCount");
+                    }}
                     placeholder="默认 32"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2508,6 +2572,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       const value = event.target.value;
                       if (value === "" || (Number(value) >= 1 && Number(value) <= 32)) {
                         setNumCores(value);
+                        markFieldModified("numCores");
                       }
                     }}
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
@@ -2535,7 +2600,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   <input
                     type="text"
                     value={designName}
-                    onChange={(event) => setDesignName(event.target.value)}
+                    onChange={(event) => {
+                      setDesignName(event.target.value);
+                      markFieldModified("designName");
+                    }}
                     placeholder="留空则求解所有设计"
                     className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
@@ -2561,7 +2629,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   type="number"
                   min={1}
                   value={threadCount}
-                  onChange={(event) => setThreadCount(event.target.value)}
+                  onChange={(event) => {
+                    setThreadCount(event.target.value);
+                    markFieldModified("threadCount");
+                  }}
                   placeholder="8"
                   className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
@@ -2573,7 +2644,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 <input
                   type="text"
                   value={jobKey}
-                  onChange={(event) => setJobKey(event.target.value)}
+                  onChange={(event) => {
+                    setJobKey(event.target.value);
+                    markFieldModified("jobKey");
+                  }}
                   placeholder="wing_001"
                   className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
