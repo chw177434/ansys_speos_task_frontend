@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 启用 standalone 输出模式，用于 Docker 部署
+  output: 'standalone',
+  
   // 配置 API 代理：将 /api/* 请求代理到后端服务器
   async rewrites() {
     // 从环境变量读取后端地址，默认为 localhost:8000

@@ -1,0 +1,25 @@
+services:
+  frontend:
+    image: ansys-speos-task-frontend:latest  # 明确指定镜像名称，统一使用连字符
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 前后端在同一 Docker 网络中，使用后端服务名
+        # 后端服务名需要与后端 docker-compose.yml 中的服务名一致
+        BACKEND_URL: http://backend:8000
+        # 如果后端服务名不同，请修改为实际的服务名，例如：
+        # BACKEND_URL: http://speos-backend:8000
+    container_name: ansys-speos-task-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - ansys-speos-task
+
+networks:
+  ansys-speos-task:
+    name: ansys-speos-task
+    external: true  # 使用外部网络，与后端共享

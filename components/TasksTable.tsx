@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_BASE,
   deleteTask,
@@ -395,7 +395,7 @@ function renderProgressInfo(
   progressInfo: ProgressInfo | null | undefined, 
   solverType?: SolverType | null,
   taskStatus?: string | null // ⚡ 新增：任务状态，用于判断是否应该显示进度信息
-): JSX.Element | null {
+): React.JSX.Element | null {
   // ⚡ 修复：如果任务已完成（SUCCESS），不显示进度信息（避免显示过时的"正在求解"等信息）
   if (!progressInfo || taskStatus === "SUCCESS") return null;
 
