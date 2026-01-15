@@ -272,6 +272,15 @@ export async function submitDirectUpload(
     if (params.task_id) {
       // 提供 task_id 时，使用已上传的文件，不需要重新上传
       formData.append("task_id", params.task_id);
+      
+      // ⚡ 关键：添加详细的日志，记录提交任务时的所有关键信息
+      console.log(`📤 [Direct] 提交任务 - 关键参数:`);
+      console.log(`  - task_id: ${params.task_id}`);
+      console.log(`  - job_name: ${params.job_name}`);
+      console.log(`  - solver_type: ${params.solver_type || "speos"}`);
+      console.log(`  - project_dir: ${params.project_dir || "N/A"}`);
+      console.log(`  - 文件应该存储在: {INPUT_DIR}/${params.task_id}/`);
+      console.log(`  - ⚠️ 注意：后端应该使用这个 task_id 查找文件，而不是创建新的 task_id`);
     } else {
       // 方式1：直接上传文件（原有方式）
       if (!params.master_file) {
@@ -387,14 +396,21 @@ export async function submitDirectUpload(
             console.log(`  - 状态: ${response.status}`);
             console.log(`  - 消息: ${response.message || "N/A"}`);
             
-            // ⚡ 验证：如果返回的 task_id 与请求的不一致，记录警告
+            // ⚡ 关键验证：如果返回的 task_id 与请求的不一致，这是严重问题
             if (response.task_id !== params.task_id) {
-              console.warn(
-                `⚠️ [Direct] 后端返回的 task_id 与请求的不一致！\n` +
+              console.error(
+                `❌ [Direct] 严重错误：后端返回的 task_id 与请求的不一致！\n` +
                 `  请求的 task_id: ${params.task_id}\n` +
                 `  返回的 task_id: ${response.task_id}\n` +
-                `  这可能导致文件查找问题。`
+                `  文件实际存储在: {INPUT_DIR}/${params.task_id}/\n` +
+                `  后端可能在查找: {INPUT_DIR}/${response.task_id}/\n` +
+                `  这会导致找不到文件！\n` +
+                `  请检查后端实现，确保提交任务时使用传递的 task_id，而不是创建新的。`
               );
+              // 虽然不一致，但我们仍然返回响应，让调用者决定如何处理
+              // 理想情况下，后端应该使用我们传递的 task_id
+            } else {
+              console.log(`✅ [Direct] 后端正确使用了请求的 task_id: ${params.task_id}`);
             }
           }
           
@@ -414,8 +430,52 @@ export async function submitDirectUpload(
           console.error(`  - HTTP 状态: ${xhr.status} ${xhr.statusText}`);
           if (params.task_id) {
             console.error(`  - 请求的 task_id: ${params.task_id}`);
+            console.error(`  - 文件应该存储在: {INPUT_DIR}/${params.task_id}/`);
           }
           console.error(`  - 错误消息: ${errorMessage}`);
+          
+          // ⚡ 检查错误消息中是否包含目录信息
+          if (errorMessage.includes("Checked directories:")) {
+            console.error(`\n🔍 [Direct] 诊断信息:`);
+            console.error(`  ❌ 后端在查找文件时使用的目录与请求的 task_id 不一致！`);
+            console.error(`  📋 问题分析:`);
+            console.error(`    1. 请求的 task_id: ${params.task_id}`);
+            console.error(`    2. 文件实际存储在: {INPUT_DIR}/${params.task_id}/`);
+            
+            // 尝试从错误消息中提取后端使用的目录
+            const dirMatch = errorMessage.match(/input_dir=([^\s,]+)/);
+            if (dirMatch && dirMatch[1]) {
+              const backendDir = dirMatch[1];
+              const backendTaskIdMatch = backendDir.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i);
+              if (backendTaskIdMatch && backendTaskIdMatch[1]) {
+                const backendTaskId = backendTaskIdMatch[1];
+                console.error(`    3. 后端查找的目录: ${backendDir}`);
+                console.error(`    4. 后端使用的 task_id: ${backendTaskId}`);
+                console.error(`    5. ❌ task_id 不匹配！后端创建了新的 task_id，而不是使用传递的 task_id`);
+                console.error(`\n  💡 解决方案:`);
+                console.error(`    这是后端的问题：后端在提交任务时创建了新的 task_id，而不是使用传递的 task_id。`);
+                console.error(`    请检查后端代码中的 _submit_task_from_existing_files 函数，`);
+                console.error(`    确保当传递了 task_id 时，使用该 task_id 而不是创建新的。`);
+                console.error(`    后端日志应该显示："No meta found for task_id=..." 和 "Created new task_id=..."`);
+              }
+            }
+            
+            console.error(`\n  📝 后端应该:`);
+            console.error(`    1. 使用传递的 task_id: ${params.task_id}`);
+            console.error(`    2. 在目录 {INPUT_DIR}/${params.task_id}/ 中查找文件`);
+            console.error(`    3. 如果找不到文件，应该报错，而不是创建新的 task_id`);
+          }
+          
+          // ⚡ 检查是否是 "Master file not found" 错误
+          if (errorMessage.includes("Master file not found")) {
+            console.error(`\n🔍 [Direct] Master file not found 错误分析:`);
+            console.error(`  这是一个常见的 task_id 不一致问题。`);
+            console.error(`  可能的原因:`);
+            console.error(`    1. 后端在提交任务时创建了新的 task_id（而不是使用传递的 task_id）`);
+            console.error(`    2. 后端在错误的目录中查找文件`);
+            console.error(`    3. 文件上传未完成或文件被移动/删除`);
+          }
+          
           console.error(`  - 完整错误数据:`, JSON.stringify(errorData, null, 2));
           
           reject(new Error(errorMessage));

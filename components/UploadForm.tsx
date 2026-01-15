@@ -916,16 +916,27 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       }
       
       // ⚡ 关键验证：确保 masterTaskId 来自上传结果，而不是其他来源
+      // 这是最关键的验证，必须确保提交任务时使用的 task_id 与上传文件时使用的 task_id 完全一致
       if (masterTaskId !== masterResult.taskId) {
         console.error(
           `❌ [Direct] 严重错误：masterTaskId 不一致！\n` +
           `  - 当前 masterTaskId: ${masterTaskId}\n` +
           `  - masterResult.taskId: ${masterResult.taskId}\n` +
-          `  - 这将导致后端找不到文件！`
+          `  - 这将导致后端找不到文件！\n` +
+          `  - 文件实际存储在: {INPUT_DIR}/${masterResult.taskId}/`
         );
         // 强制使用 masterResult.taskId，确保一致性
         masterTaskId = masterResult.taskId;
         console.log(`✅ [Direct] 已修正 masterTaskId 为: ${masterTaskId}`);
+        console.log(`✅ [Direct] 文件实际存储目录: {INPUT_DIR}/${masterTaskId}/`);
+      }
+      
+      // ⚡ 额外验证：确保 masterTaskId 不为空且格式正确
+      if (!masterTaskId) {
+        throw new Error("[Direct] masterTaskId 为空，无法提交任务");
+      }
+      if (!UUID_REGEX.test(masterTaskId)) {
+        throw new Error(`[Direct] masterTaskId 格式无效: ${masterTaskId}`);
       }
       
       // ✅ 根据后端规范：使用 master 文件的 task_id 来提交任务
@@ -933,11 +944,26 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       // - Master 文件：第一个找到的文件
       // - Include 压缩包：查找 .zip, .rar, .7z 等格式
       // - 如果找不到，会在其他目录中查找最近 5 分钟内上传的文件（容错机制）
+      
+      // ⚡ 最终验证：确保 masterTaskId 与 masterResult.taskId 完全一致
+      // 这是防止 task_id 不一致的最后一道防线
+      const finalTaskId = masterResult.taskId; // 直接使用上传结果中的 task_id
+      if (masterTaskId !== finalTaskId) {
+        console.error(
+          `❌ [Direct] 最终验证失败：masterTaskId 与 masterResult.taskId 不一致！\n` +
+          `  - masterTaskId: ${masterTaskId}\n` +
+          `  - masterResult.taskId: ${finalTaskId}\n` +
+          `  - 强制使用 masterResult.taskId 以确保一致性`
+        );
+        masterTaskId = finalTaskId;
+      }
+      
       console.log(`📤 [Direct] 准备提交任务`);
-      console.log(`📤 [Direct] ⚡ 关键信息验证:`);
-      console.log(`  - 使用的 task_id: ${masterTaskId}`);
-      console.log(`  - masterResult.taskId: ${masterResult.taskId}`);
-      console.log(`  - masterResult.filePath: ${masterResult.filePath}`);
+      console.log(`📤 [Direct] ⚡ 关键信息验证（最终确认）:`);
+      console.log(`  - ✅ 最终使用的 task_id: ${masterTaskId}`);
+      console.log(`  - ✅ masterResult.taskId: ${masterResult.taskId}`);
+      console.log(`  - ✅ 文件实际存储目录: {INPUT_DIR}/${masterTaskId}/`);
+      console.log(`  - ✅ masterResult.filePath: ${masterResult.filePath}`);
       console.log(`  - Master 文件路径: ${masterFilePath || "N/A"}`);
       if (includeFilePath) {
         console.log(`  - Include 文件路径: ${includeFilePath}`);
@@ -946,10 +972,32 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         console.log(`  - 没有 Include 文件，将只处理 Master 文件`);
       }
       
-      // ⚡ 额外验证：检查 task_id 格式（应该是 UUID）
+      // ⚡ 最终验证：检查 task_id 格式（应该是 UUID）
       if (!UUID_REGEX.test(masterTaskId)) {
         console.error(`❌ [Direct] task_id 格式不正确: ${masterTaskId}`);
         throw new Error(`[Direct] 无效的 task_id 格式: ${masterTaskId}`);
+      }
+      
+      // ⚡ 关键：从文件路径中提取 task_id，验证是否一致
+      if (masterFilePath) {
+        const pathMatch = masterFilePath.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i);
+        if (pathMatch && pathMatch[1]) {
+          const pathTaskId = pathMatch[1];
+          if (pathTaskId !== masterTaskId) {
+            console.error(
+              `❌ [Direct] 文件路径中的 task_id 与使用的 task_id 不一致！\n` +
+              `  - 文件路径中的 task_id: ${pathTaskId}\n` +
+              `  - 使用的 task_id: ${masterTaskId}\n` +
+              `  - 文件路径: ${masterFilePath}\n` +
+              `  - 这将导致后端找不到文件！`
+            );
+            // 使用文件路径中的 task_id，因为这是文件实际存储的位置
+            console.log(`✅ [Direct] 修正为使用文件路径中的 task_id: ${pathTaskId}`);
+            masterTaskId = pathTaskId;
+          } else {
+            console.log(`✅ [Direct] 文件路径中的 task_id 与使用的 task_id 一致: ${masterTaskId}`);
+          }
+        }
       }
       
       const params: DirectUploadParams = {
@@ -1098,15 +1146,15 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       console.error("=".repeat(60));
       console.error(`错误消息: ${errorMessage}`);
       
-      // 记录关键上下文信息
+      // 记录关键上下文信息（用于调试）
       if (masterTaskId) {
-        console.error(`当前 masterTaskId: ${masterTaskId}`);
+        console.log(`[Direct] 错误上下文 - masterTaskId: ${masterTaskId}`);
       }
       if (masterFilePath) {
-        console.error(`当前 masterFilePath: ${masterFilePath}`);
+        console.log(`[Direct] 错误上下文 - masterFilePath: ${masterFilePath}`);
       }
       if (includeFilePath) {
-        console.error(`当前 includeFilePath: ${includeFilePath}`);
+        console.log(`[Direct] 错误上下文 - includeFilePath: ${includeFilePath}`);
       }
       
       // 检查是否是 "Master file not found" 错误
