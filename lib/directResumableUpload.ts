@@ -325,26 +325,52 @@ export class DirectResumableUploadManager {
     
     const initResponse = await initDirectMultipartUpload(initRequest);
     
-    // 根据后端规范：如果传递了 task_id，返回的 task_id 应该与传递的完全一致
+    // ⚡ 关键验证：根据后端规范，如果传递了 task_id，返回的 task_id 应该与传递的完全一致
     // 如果返回了不同的 task_id，说明后端可能不支持该参数或有问题
     if (this.taskId && initResponse.task_id !== this.taskId) {
-      console.error(
-        `❌ [Direct] 后端返回了不同的 task_id！这不符合后端规范。` +
-        `请求的 task_id: ${this.taskId}, 返回的 task_id: ${initResponse.task_id}` +
-        `\n后端应该返回与请求相同的 task_id。请检查后端实现。`
+      const errorMsg = 
+        `❌ [Direct] 严重错误：后端返回了不同的 task_id！这不符合后端规范。\n` +
+        `  请求的 task_id: ${this.taskId}\n` +
+        `  返回的 task_id: ${initResponse.task_id}\n` +
+        `  文件名: ${this.filename}\n` +
+        `  文件类型: ${this.fileType}\n` +
+        `\n后端应该返回与请求相同的 task_id。这会导致文件存储在不同目录，提交任务时找不到文件！\n` +
+        `虽然后端有跨目录查找容错机制，但这不是最佳实践。`;
+      
+      console.error(errorMsg);
+      
+      // ⚡ 重要决策：如果后端返回了不同的 task_id，我们有两个选择：
+      // 1. 使用请求的 task_id（可能导致文件找不到）
+      // 2. 使用返回的 task_id（可能导致提交任务时找不到文件）
+      // 这里我们使用返回的 task_id，因为文件已经存储在该目录下
+      // 但会在日志中记录警告，提醒开发者检查后端实现
+      console.warn(
+        `⚠️ [Direct] 将使用后端返回的 task_id: ${initResponse.task_id}\n` +
+        `  注意：提交任务时必须使用这个 task_id，否则会找不到文件！`
       );
-      // 虽然不一致，但继续使用后端返回的 task_id，避免流程中断
-      // 后端有跨目录查找容错机制，可以处理这种情况
     } else if (this.taskId && initResponse.task_id === this.taskId) {
       console.log(`✅ [Direct] 后端正确返回了请求的 task_id: ${this.taskId}`);
+    } else if (!this.taskId) {
+      console.log(`✅ [Direct] 后端创建了新的 task_id: ${initResponse.task_id}`);
     }
+    
+    // ⚡ 保存原始请求的 task_id（如果存在），用于后续验证
+    const requestedTaskId = this.taskId;
     
     this.taskId = initResponse.task_id;
     this.uploadId = initResponse.upload_id;
     this.totalChunks = initResponse.total_chunks;
     this.allParts = initResponse.parts;
     
-    console.log(`[Direct] ✅ 初始化成功: taskId=${this.taskId}, uploadId=${this.uploadId}, 总分片=${this.totalChunks}`);
+    console.log(`[Direct] ✅ 初始化成功:`);
+    console.log(`  - taskId: ${this.taskId}`);
+    console.log(`  - uploadId: ${this.uploadId}`);
+    console.log(`  - 总分片: ${this.totalChunks}`);
+    console.log(`  - 文件名: ${this.filename}`);
+    console.log(`  - 文件类型: ${this.fileType}`);
+    if (requestedTaskId && requestedTaskId !== this.taskId) {
+      console.log(`  - ⚠️ 请求的 task_id: ${requestedTaskId} (与返回的不一致)`);
+    }
   }
   
   /**

@@ -378,16 +378,54 @@ export async function submitDirectUpload(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const response = JSON.parse(xhr.responseText) as DirectUploadResponse;
+          
+          // ⚡ 添加详细日志：记录提交任务的响应
+          if (params.task_id) {
+            console.log(`✅ [Direct] 任务提交成功:`);
+            console.log(`  - 请求的 task_id: ${params.task_id}`);
+            console.log(`  - 返回的 task_id: ${response.task_id}`);
+            console.log(`  - 状态: ${response.status}`);
+            console.log(`  - 消息: ${response.message || "N/A"}`);
+            
+            // ⚡ 验证：如果返回的 task_id 与请求的不一致，记录警告
+            if (response.task_id !== params.task_id) {
+              console.warn(
+                `⚠️ [Direct] 后端返回的 task_id 与请求的不一致！\n` +
+                `  请求的 task_id: ${params.task_id}\n` +
+                `  返回的 task_id: ${response.task_id}\n` +
+                `  这可能导致文件查找问题。`
+              );
+            }
+          }
+          
           resolve(response);
         } catch (error) {
+          console.error(`❌ [Direct] 解析响应失败:`, error);
+          console.error(`  响应文本:`, xhr.responseText);
           reject(new Error("解析响应失败"));
         }
       } else {
         try {
           const errorData = JSON.parse(xhr.responseText);
           const errorMessage = errorData?.detail || errorData?.message || xhr.statusText;
+          
+          // ⚡ 增强错误日志：记录详细的错误信息
+          console.error(`❌ [Direct] 任务提交失败:`);
+          console.error(`  - HTTP 状态: ${xhr.status} ${xhr.statusText}`);
+          if (params.task_id) {
+            console.error(`  - 请求的 task_id: ${params.task_id}`);
+          }
+          console.error(`  - 错误消息: ${errorMessage}`);
+          console.error(`  - 完整错误数据:`, JSON.stringify(errorData, null, 2));
+          
           reject(new Error(errorMessage));
         } catch {
+          console.error(`❌ [Direct] 任务提交失败（无法解析错误）:`);
+          console.error(`  - HTTP 状态: ${xhr.status} ${xhr.statusText}`);
+          if (params.task_id) {
+            console.error(`  - 请求的 task_id: ${params.task_id}`);
+          }
+          console.error(`  - 响应文本:`, xhr.responseText);
           reject(new Error(`上传失败: ${xhr.status} ${xhr.statusText}`));
         }
       }

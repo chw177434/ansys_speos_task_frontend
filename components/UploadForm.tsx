@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   type FormEvent,
@@ -35,6 +35,9 @@ import {
 } from "../lib/directResumableUpload";
 
 const FORM_STATE_KEY = "speos_task_form_state";
+
+// UUID 格式验证正则表达式（用于验证 task_id）
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface StoredFormState {
   profileName: string;
@@ -768,9 +771,20 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         }
       );
 
+      // ⚡ 关键：直接从上传结果获取 task_id，确保一致性
       masterTaskId = masterResult.taskId;
       masterFilePath = masterResult.filePath;
-      console.log(`✅ [Direct] Master 文件上传完成: ${masterResult.filePath}`);
+      
+      console.log(`✅ [Direct] Master 文件上传完成:`);
+      console.log(`  - taskId: ${masterResult.taskId}`);
+      console.log(`  - filePath: ${masterResult.filePath}`);
+      console.log(`  - fileType: ${masterResult.fileType}`);
+      console.log(`  - uploadId: ${masterResult.uploadId}`);
+      
+      // ⚡ 验证：确保 task_id 格式正确
+      if (!UUID_REGEX.test(masterTaskId)) {
+        throw new Error(`[Direct] Master 文件返回的 task_id 格式无效: ${masterTaskId}`);
+      }
 
       // 步骤 2: 如果有 include 文件，也使用分片上传
       // ⚠️ 重要：include 文件必须使用与 master 文件相同的 task_id
@@ -901,19 +915,41 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         throw new Error("[Direct] 断点续传上传失败：未获取到任务ID");
       }
       
+      // ⚡ 关键验证：确保 masterTaskId 来自上传结果，而不是其他来源
+      if (masterTaskId !== masterResult.taskId) {
+        console.error(
+          `❌ [Direct] 严重错误：masterTaskId 不一致！\n` +
+          `  - 当前 masterTaskId: ${masterTaskId}\n` +
+          `  - masterResult.taskId: ${masterResult.taskId}\n` +
+          `  - 这将导致后端找不到文件！`
+        );
+        // 强制使用 masterResult.taskId，确保一致性
+        masterTaskId = masterResult.taskId;
+        console.log(`✅ [Direct] 已修正 masterTaskId 为: ${masterTaskId}`);
+      }
+      
       // ✅ 根据后端规范：使用 master 文件的 task_id 来提交任务
       // 后端会在 {INPUT_DIR}/{task_id}/ 目录下查找文件：
       // - Master 文件：第一个找到的文件
       // - Include 压缩包：查找 .zip, .rar, .7z 等格式
       // - 如果找不到，会在其他目录中查找最近 5 分钟内上传的文件（容错机制）
       console.log(`📤 [Direct] 准备提交任务`);
-      console.log(`📤 [Direct] 使用 task_id: ${masterTaskId}`);
-      console.log(`📤 [Direct] Master 文件路径: ${masterFilePath || "N/A"}`);
+      console.log(`📤 [Direct] ⚡ 关键信息验证:`);
+      console.log(`  - 使用的 task_id: ${masterTaskId}`);
+      console.log(`  - masterResult.taskId: ${masterResult.taskId}`);
+      console.log(`  - masterResult.filePath: ${masterResult.filePath}`);
+      console.log(`  - Master 文件路径: ${masterFilePath || "N/A"}`);
       if (includeFilePath) {
-        console.log(`📤 [Direct] Include 文件路径: ${includeFilePath}`);
-        console.log(`📤 [Direct] 后端将自动解压 Include 文件到: {INPUT_DIR}/${masterTaskId}/`);
+        console.log(`  - Include 文件路径: ${includeFilePath}`);
+        console.log(`  - 后端将自动解压 Include 文件到: {INPUT_DIR}/${masterTaskId}/`);
       } else {
-        console.log(`📤 [Direct] 没有 Include 文件，将只处理 Master 文件`);
+        console.log(`  - 没有 Include 文件，将只处理 Master 文件`);
+      }
+      
+      // ⚡ 额外验证：检查 task_id 格式（应该是 UUID）
+      if (!UUID_REGEX.test(masterTaskId)) {
+        console.error(`❌ [Direct] task_id 格式不正确: ${masterTaskId}`);
+        throw new Error(`[Direct] 无效的 task_id 格式: ${masterTaskId}`);
       }
       
       const params: DirectUploadParams = {
@@ -1056,14 +1092,49 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       
       errorMessage = extractErrorMessage(error);
       
-      // 记录详细的错误信息（避免直接打印对象导致 [object Object]）
-      console.error("[Direct] 断点续传上传失败", errorMessage);
+      // ⚡ 增强错误日志：记录关键上下文信息
+      console.error("=".repeat(60));
+      console.error("❌ [Direct] 断点续传上传失败");
+      console.error("=".repeat(60));
+      console.error(`错误消息: ${errorMessage}`);
+      
+      // 记录关键上下文信息
+      if (masterTaskId) {
+        console.error(`当前 masterTaskId: ${masterTaskId}`);
+      }
+      if (masterFilePath) {
+        console.error(`当前 masterFilePath: ${masterFilePath}`);
+      }
+      if (includeFilePath) {
+        console.error(`当前 includeFilePath: ${includeFilePath}`);
+      }
+      
+      // 检查是否是 "Master file not found" 错误
+      if (errorMessage.includes("Master file not found")) {
+        console.error("\n🔍 [Direct] 诊断信息:");
+        console.error("  这是一个 'Master file not found' 错误，可能的原因：");
+        console.error("  1. task_id 不一致：提交任务时使用的 task_id 与上传文件时的 task_id 不同");
+        console.error("  2. 文件上传未完成：文件可能没有完全上传到服务器");
+        console.error("  3. 后端文件查找逻辑问题：后端在指定目录中找不到文件");
+        console.error("\n💡 建议检查：");
+        console.error("  - 查看上传日志，确认文件上传时使用的 task_id");
+        console.error("  - 查看提交任务日志，确认提交时使用的 task_id");
+        console.error("  - 检查两个 task_id 是否一致");
+        if (masterTaskId) {
+          console.error(`  - 当前使用的 task_id: ${masterTaskId}`);
+          console.error(`  - 后端应该在该目录查找: {INPUT_DIR}/${masterTaskId}/`);
+        }
+      }
+      
       if (error instanceof Error) {
-        console.error("[Direct] 错误堆栈:", error.stack);
+        console.error("\n错误堆栈:");
+        console.error(error.stack);
       }
       if (typeof error === "object" && error !== null) {
-        console.error("[Direct] 错误详情:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        console.error("\n完整错误对象:");
+        console.error(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       }
+      console.error("=".repeat(60));
       
       // 确保抛出的是 Error 对象，且消息不为空
       const finalMessage = errorMessage || "断点续传上传失败";
