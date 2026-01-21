@@ -195,6 +195,49 @@ export async function deleteTask(taskId: string) {
   });
 }
 
+// ============= 停止任务接口 =============
+
+/**
+ * 停止任务响应数据
+ */
+export interface StopTaskResponse {
+  task_id: string;
+  status: string; // 始终为 "CANCELLED"
+  message: string;
+  terminated_processes: Array<{
+    pid: number;
+    name: string;
+    method: "terminated" | "killed";
+  }>;
+  lock_released: boolean;
+  previous_status: {
+    celery: string;
+    database: string;
+  };
+}
+
+/**
+ * 停止任务
+ * @param taskId 要停止的任务ID
+ * @returns 停止任务响应数据
+ * 
+ * @example
+ * ```typescript
+ * try {
+ *   const result = await stopTask('task_123');
+ *   console.log(`任务已停止: ${result.task_id}`);
+ *   console.log(`终止的进程数: ${result.terminated_processes.length}`);
+ * } catch (error) {
+ *   console.error('停止任务失败:', error);
+ * }
+ * ```
+ */
+export async function stopTask(taskId: string): Promise<StopTaskResponse> {
+  return request<StopTaskResponse>(`/tasks/${taskId}/stop`, {
+    method: "POST",
+  });
+}
+
 // ============= 上传配置接口 =============
 
 export interface UploadConfigResponse {

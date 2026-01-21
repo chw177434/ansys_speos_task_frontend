@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -6,10 +6,12 @@ import {
   deleteTask,
   listOutputs,
   retryTask,
+  stopTask,
   formatEstimatedTime,
   type TaskOutputsResponse,
   type ProgressInfo,
   type RetryTaskResponse,
+  type StopTaskResponse,
   type SolverType,
 } from "../lib/api";
 
@@ -71,6 +73,7 @@ interface TableTask extends RawTask {
   outputsError: string | null;
   deleting: boolean;
   retrying: boolean; // ✅ 重试中状态
+  stopping: boolean; // ✅ 停止中状态
   actionError: string | null;
 }
 
@@ -317,6 +320,7 @@ function createRows(items: RawTask[]): TableTask[] {
       outputsError: null,
       deleting: false,
       retrying: false, // ✅ 初始化重试状态
+      stopping: false, // ✅ 初始化停止状态
       actionError: null,
     };
   });
@@ -1647,6 +1651,83 @@ export default function TasksTable() {
     [applyTaskUpdate, fetchTasks, isClientPaging, page, pageSize]
   );
 
+  // ✅ 停止任务处理函数
+  const handleStop = useCallback(
+    async (taskId: string) => {
+      // 确认操作 - 使用更友好的确认对话框
+      const confirmed = window.confirm(
+        "⚠️ 确定要停止这个任务吗？\n\n" +
+        "停止后：\n" +
+        "• 任务状态将变为 CANCELLED\n" +
+        "• 正在执行的求解器进程将被终止\n" +
+        "• 锁会被释放，排队的任务可以开始执行\n" +
+        "• 停止后的任务支持删除\n\n" +
+        "⚠️ 注意：此操作不可撤销！"
+      );
+      
+      if (!confirmed) return;
+
+      applyTaskUpdate(taskId, (task) => ({
+        ...task,
+        stopping: true,
+        actionError: null,
+      }));
+
+      try {
+        const result: StopTaskResponse = await stopTask(taskId);
+
+        // 显示成功消息（包含详细信息）
+        const processesInfo = result.terminated_processes.length > 0
+          ? `\n已终止进程：\n${result.terminated_processes.map(p => `  • ${p.name} (PID: ${p.pid})`).join('\n')}`
+          : '';
+        
+        const message = 
+          `✅ 任务已成功停止！\n\n` +
+          `任务ID: ${result.task_id}\n` +
+          `新状态: ${result.status}\n` +
+          `锁已释放: ${result.lock_released ? '是' : '否'}${processesInfo}\n\n` +
+          `页面将刷新以显示最新状态...`;
+        
+        alert(message);
+
+        // 更新任务状态为 CANCELLED
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          status: "CANCELLED",
+          stopping: false,
+        }));
+
+        // 刷新任务列表（确保状态同步）
+        const targetPage = isClientPaging ? 1 : page;
+        await fetchTasks(targetPage, pageSize);
+
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "停止任务失败";
+        applyTaskUpdate(taskId, (task) => ({
+          ...task,
+          stopping: false,
+          actionError: message,
+        }));
+        
+        // 显示错误提示
+        let errorMessage = `❌ 停止任务失败\n\n${message}`;
+        
+        // 根据错误类型提供更友好的提示
+        if (message.includes("not running") || message.includes("无法停止")) {
+          errorMessage += "\n\n提示：只能停止正在运行的任务。";
+        } else if (message.includes("not found") || message.includes("不存在")) {
+          errorMessage += "\n\n提示：任务可能已被删除，页面将刷新。";
+          // 如果任务不存在，刷新列表
+          const targetPage = isClientPaging ? 1 : page;
+          await fetchTasks(targetPage, pageSize);
+        }
+        
+        alert(errorMessage);
+      }
+    },
+    [applyTaskUpdate, fetchTasks, isClientPaging, page, pageSize]
+  );
+
   const renderBody = () => {
     if (loading) {
       return (
@@ -1699,6 +1780,9 @@ export default function TasksTable() {
 
       // 判断是否可以重试（失败状态）
       const canRetry = ["FAILURE", "FAILED", "REVOKED", "CANCELLED", "CANCELED", "ABORTED"].includes(task.status);
+      
+      // 判断是否可以停止（运行中状态）
+      const canStop = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING"].includes(task.status);
 
       return (
         <tr key={task.task_id} className="border-b last:border-b-0 align-top">
@@ -1794,24 +1878,82 @@ export default function TasksTable() {
             )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              {/* ✅ 停止按钮（仅运行中状态显示） */}
+              {canStop && (
+                <button
+                  onClick={() => handleStop(task.task_id)}
+                  disabled={task.stopping}
+                  className="rounded border border-orange-300 bg-gradient-to-r from-orange-50 to-red-50 px-3 py-1.5 text-orange-700 hover:from-orange-100 hover:to-red-100 disabled:cursor-not-allowed disabled:opacity-60 transition-all duration-200 shadow-sm hover:shadow-md font-medium flex items-center gap-1.5"
+                  title="停止正在运行的任务"
+                >
+                  {task.stopping ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>停止中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                      </svg>
+                      <span>停止任务</span>
+                    </>
+                  )}
+                </button>
+              )}
+              
               {/* ✅ 重试按钮（仅失败状态显示） */}
               {canRetry && (
                 <button
                   onClick={() => handleRetry(task.task_id)}
                   disabled={task.retrying}
-                  className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 transition-colors duration-200 font-medium flex items-center gap-1.5"
                   title="重新执行此任务"
                 >
-                  {task.retrying ? "重试中..." : "🔄 重新执行"}
+                  {task.retrying ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>重试中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>重新执行</span>
+                    </>
+                  )}
                 </button>
               )}
               
               <button
                 onClick={() => handleDelete(task.task_id)}
                 disabled={task.deleting}
-                className="rounded border border-red-200 px-3 py-1 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded border border-red-200 px-3 py-1.5 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 transition-colors duration-200 font-medium flex items-center gap-1.5"
+                title="删除任务"
               >
-                {task.deleting ? "删除中..." : "删除任务"}
+                {task.deleting ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>删除中...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>删除任务</span>
+                  </>
+                )}
               </button>
             </div>
 
