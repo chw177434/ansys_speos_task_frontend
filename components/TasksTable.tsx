@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   API_BASE,
   deleteTask,
+  getTaskStatus,
   listOutputs,
   retryTask,
   stopTask,
@@ -59,6 +60,10 @@ interface RawTask {
   retry_count?: number | null; // ✅ 重试次数
   retried_task_ids?: string[] | null; // ✅ 重试生成的任务列表
   solver_type?: SolverType | null; // ⭐ 新增：求解器类型
+  /** 失败时的简短提示（如「求解器退出码 1」） */
+  message?: string | null;
+  /** 失败时的详细报错内容（SPEOS/ANSYS 或 Python 异常） */
+  error_detail?: string | null;
 }
 
 interface TaskOutput {
@@ -75,6 +80,8 @@ interface TableTask extends RawTask {
   retrying: boolean; // ✅ 重试中状态
   stopping: boolean; // ✅ 停止中状态
   actionError: string | null;
+  /** 是否正在加载错误详情（用于失败任务） */
+  errorDetailLoading?: boolean;
 }
 
 type StatusTimestampMap = Record<string, number>;
@@ -906,6 +913,8 @@ export default function TasksTable() {
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [solverTypeFilter, setSolverTypeFilter] = useState("");
+  /** 当前展开错误详情的任务 ID（失败任务可展开查看 error_detail） */
+  const [expandedErrorTaskId, setExpandedErrorTaskId] = useState<string | null>(null);
 
   const isClientPaging = pagingMode === "client" && Array.isArray(allRows);
 
@@ -1321,6 +1330,7 @@ export default function TasksTable() {
         
         // ⚡ 重要：先更新本地状态，确保状态立即反映在UI上
         // ⚡ 修复：如果任务状态是SUCCESS，清除旧的进度信息（避免显示"正在求解"等过时信息）
+        // ⚡ 失败时合并 message、error_detail，便于界面展示
         applyTaskUpdate(taskId, (task) => ({
           ...task,
           status: newStatus || task.status,
@@ -1329,6 +1339,8 @@ export default function TasksTable() {
           duration: data.duration ?? task.duration,
           elapsed_seconds: data.elapsed_seconds ?? task.elapsed_seconds,
           solver_type: data.solver_type || task.solver_type, // 确保求解器类型也被更新
+          message: data.message ?? task.message,
+          error_detail: data.error_detail ?? task.error_detail,
         }));
         
         // ⚡ 如果任务状态变为 SUCCESS，立即刷新任务列表并获取输出文件
@@ -1521,6 +1533,34 @@ export default function TasksTable() {
       window.clearInterval(timer);
     };
   }, [hasRunningOrPendingTasks, fetchTasks, isClientPaging, page, pageSize]);
+
+  /** 展开/收起错误详情；若尚无 error_detail 则请求 GET /api/tasks/{task_id} 并写入任务 */
+  const toggleErrorDetail = useCallback(
+    async (taskId: string, task: TableTask) => {
+      const isFailure = ["FAILURE", "FAILED"].includes(task.status);
+      if (!isFailure) return;
+
+      const nextExpanded = expandedErrorTaskId === taskId ? null : taskId;
+      setExpandedErrorTaskId(nextExpanded);
+
+      if (nextExpanded !== taskId) return;
+      if (task.error_detail != null && task.error_detail !== "") return;
+
+      applyTaskUpdate(taskId, (t) => ({ ...t, errorDetailLoading: true }));
+      try {
+        const res = await getTaskStatus(taskId);
+        applyTaskUpdate(taskId, (t) => ({
+          ...t,
+          message: res.message ?? t.message,
+          error_detail: res.error_detail ?? t.error_detail,
+          errorDetailLoading: false,
+        }));
+      } catch {
+        applyTaskUpdate(taskId, (t) => ({ ...t, errorDetailLoading: false }));
+      }
+    },
+    [applyTaskUpdate, expandedErrorTaskId]
+  );
 
   const handleRefresh = useCallback(() => {
     const targetPage = isClientPaging ? 1 : page;
@@ -1834,6 +1874,38 @@ export default function TasksTable() {
                 <span className="text-sm">{statusInfo.icon}</span>
                 <span>{statusInfo.label}</span>
               </span>
+              {/* 失败时展示简短提示（message）及可展开的错误详情（error_detail） */}
+              {canRetry && (
+                <div className="mt-1.5 w-full max-w-[280px] text-left">
+                  {(task.message || task.error_detail) && (
+                    <p className="text-xs text-red-600 font-medium break-words" title={task.message || undefined}>
+                      {task.message || "执行失败"}
+                    </p>
+                  )}
+                  <div className="mt-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleErrorDetail(task.task_id, task)}
+                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {expandedErrorTaskId === task.task_id ? "收起错误详情" : "查看错误详情"}
+                    </button>
+                    {expandedErrorTaskId === task.task_id && (
+                      <div className="mt-1 rounded border border-red-200 bg-red-50/80 p-2 max-h-48 overflow-auto">
+                        {task.errorDetailLoading ? (
+                          <span className="text-xs text-gray-500">加载中...</span>
+                        ) : task.error_detail ? (
+                          <pre className="text-xs font-mono text-gray-800 whitespace-pre-wrap break-words m-0">
+                            {task.error_detail}
+                          </pre>
+                        ) : (
+                          <span className="text-xs text-gray-500">暂无详细报错信息</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="mt-2 text-xs text-gray-500 whitespace-nowrap" title={`状态更新时间: ${statusTime}`}>
                 {statusTime}
               </div>

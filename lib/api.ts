@@ -103,9 +103,14 @@ export interface ProgressInfo {
 export interface TaskStatusResponse {
   task_id: string;
   status: string;
+  /** 失败时的简短提示（如「求解器退出码 1」） */
   message?: string | null;
+  /** 失败时的详细报错内容（SPEOS/ANSYS 或 Python 异常），用于错误详情区域 */
+  error_detail?: string | null;
   download_url?: string | null;
   download_name?: string | null;
+  output_path?: string | null;
+  logs_path?: string | null;
   duration?: number | null;
   elapsed_seconds?: number | null;
   progress_info?: ProgressInfo | null; // ✅ 执行进度信息（多求解器）
@@ -113,6 +118,32 @@ export interface TaskStatusResponse {
   retry_count?: number | null; // ✅ 重试次数（0表示原始任务）
   retried_task_ids?: string[] | null; // ✅ 由此任务生成的重试任务列表
   solver_type?: SolverType | null; // ⭐ 新增：求解器类型
+}
+
+/** 任务详情（GET /api/tasks/{task_id}/detail），包含失败时的 message + error_detail */
+export interface TaskDetail {
+  task_id: string;
+  status: string;
+  message?: string | null;
+  error_detail?: string | null;
+  created_at?: number | null;
+  archive_id?: string | null;
+  input_dir?: string | null;
+  output_dir?: string | null;
+  log_dir?: string | null;
+  params?: Record<string, unknown>;
+  download_url?: string | null;
+  download_name?: string | null;
+  display_name?: string | null;
+  submitter?: string | null;
+  duration?: number | null;
+  elapsed_seconds?: number | null;
+  status_history?: Array<Record<string, unknown>>;
+  parent_task_id?: string | null;
+  retry_count?: number | null;
+  retried_task_ids?: string[] | null;
+  solver_type?: SolverType | null;
+  progress_info?: ProgressInfo | null;
 }
 
 export interface TaskOutputsResponse {
@@ -133,6 +164,11 @@ export async function createTask(formData: FormData) {
 
 export async function getTaskStatus(taskId: string) {
   return request<TaskStatusResponse>(`/tasks/${taskId}`);
+}
+
+/** 获取任务详情（含失败时的 message、error_detail） */
+export async function getTaskDetail(taskId: string) {
+  return request<TaskDetail>(`/tasks/${taskId}/detail`);
 }
 
 // ============= 任务重试接口 =============
