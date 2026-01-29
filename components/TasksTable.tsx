@@ -984,6 +984,10 @@ export default function TasksTable() {
     return Math.max(1, Math.ceil(count / Math.max(pageSize, 1)));
   }, [total, pageSize]);
 
+  // 分页栏展示用：服务端分页用 total/totalPages，客户端分页用 displayTotal/displayTotalPages
+  const effectiveTotal = isClientPaging ? displayTotal : Math.max(total, 0);
+  const effectiveTotalPages = isClientPaging ? displayTotalPages : totalPages;
+
   const applyTaskUpdate = useCallback(
     (taskId: string, updater: (task: TableTask) => TableTask) => {
       // ✅ 先从 ref 获取当前任务（可能不在当前页）
@@ -2081,7 +2085,7 @@ export default function TasksTable() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
-        <div>共 {displayTotal} 条记录</div>
+        <div>共 {effectiveTotal} 条记录</div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2">
             <span>每页</span>
@@ -2106,12 +2110,12 @@ export default function TasksTable() {
               上一页
             </button>
             <span>
-              第 {page} / {displayTotalPages} 页
+              第 {page} / {effectiveTotalPages} 页
             </span>
             <button
               className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => handlePageChange(page + 1)}
-              disabled={loading || page >= displayTotalPages}
+              disabled={loading || page >= effectiveTotalPages}
             >
               下一页
             </button>
