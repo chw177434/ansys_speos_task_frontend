@@ -484,9 +484,11 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         project_dir: projectDir.trim() || undefined,
         solver_type: solverType, // ⭐ 添加求解器类型
         
+        // ========== 通用基础参数（所有求解器）==========
+        use_gpu: useGpu,
+        
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
-          use_gpu: includeIfModified("useGpu", useGpu),
           simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
           thread_count: includeIfModified("threadCount", threadCount.trim()),
           priority: includeIfModified("priority", priority.trim()),
@@ -1007,9 +1009,11 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         project_dir: projectDir.trim() || undefined,
         solver_type: solverType, // ⭐ 添加求解器类型
         
+        // ========== 通用基础参数（所有求解器）==========
+        use_gpu: useGpu,
+        
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
-          use_gpu: includeIfModified("useGpu", useGpu),
           simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
           thread_count: includeIfModified("threadCount", threadCount.trim()),
           priority: includeIfModified("priority", priority.trim()),
@@ -1384,6 +1388,9 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     // ⭐ 关键修复：添加 solver_type 参数
     formData.append("solver_type", solverType);
 
+    // ========== 通用基础参数：是否使用 GPU（所有求解器）==========
+    formData.append("use_gpu", useGpu ? "true" : "false");
+
     if (includeArchive) {
       formData.append("include_archive", includeArchive, includeArchive.name);
     }
@@ -1395,11 +1402,6 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
 
     // ========== SPEOS 参数 ==========
     if (solverType === "speos") {
-      const useGpuValue = includeIfModified("useGpu", useGpu);
-      if (useGpuValue) {
-        formData.append("use_gpu", "true");
-      }
-
       const trimmedSimulation = includeIfModified("simulationIndex", simulationIndex.trim());
       if (trimmedSimulation) {
         formData.append("simulation_index", trimmedSimulation);
@@ -1629,9 +1631,11 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       project_dir: projectDir.trim() || undefined,
       solver_type: solverType, // ⭐ 添加求解器类型
       
+      // ========== 通用基础参数（所有求解器）==========
+      use_gpu: useGpu,
+      
       // ========== SPEOS 参数 ==========
       ...(solverType === "speos" && {
-        use_gpu: includeIfModified("useGpu", useGpu),
         simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
         thread_count: includeIfModified("threadCount", threadCount.trim()),
         priority: includeIfModified("priority", priority.trim()),
@@ -1842,9 +1846,11 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         project_dir: projectDir.trim() || undefined,
         solver_type: solverType, // ⭐ 添加求解器类型
         
+        // ========== 通用基础参数（所有求解器）==========
+        use_gpu: useGpu,
+        
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
-          use_gpu: includeIfModified("useGpu", useGpu),
           simulation_index: includeIfModified("simulationIndex", simulationIndex.trim()),
           thread_count: includeIfModified("threadCount", threadCount.trim()),
           priority: includeIfModified("priority", priority.trim()),
@@ -2301,6 +2307,25 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          {/* ⭐ 基础配置：是否使用 GPU（所有求解器通用） */}
+          <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
+            <div>
+              <p className="text-sm font-medium text-slate-700">使用 GPU 求解</p>
+              <p className="text-xs text-slate-500">启用后将以 GPU 模式运行，加速计算（需服务器支持）。</p>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={useGpu}
+                onChange={(event) => {
+                  setUseGpu(event.target.checked);
+                  markFieldModified("useGpu");
+                }}
+              />
+              启用
+            </label>
+          </div>
         </div>
 
         <div className="space-y-3 rounded-xl bg-slate-50 p-4">
@@ -2318,24 +2343,6 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               {/* ========== SPEOS 参数 ========== */}
               {solverType === "speos" && (
                 <>
-                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">使用 GPU 求解器 (-G)</p>
-                      <p className="text-xs text-slate-500">启用后将以 GPU 模式运行。</p>
-                    </div>
-                    <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={useGpu}
-                        onChange={(event) => {
-                          setUseGpu(event.target.checked);
-                          markFieldModified("useGpu");
-                        }}
-                      />
-                      启用
-                    </label>
-                  </div>
-
                   <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Simulation 序号 (-S)</label>

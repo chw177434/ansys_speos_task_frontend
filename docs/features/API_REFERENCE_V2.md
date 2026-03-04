@@ -42,9 +42,9 @@
     submitter?: string;           // 提交人
     project_dir?: string;         // 项目目录
     include_path?: string;        // Include 路径
+    use_gpu?: boolean;            // ⭐ 是否使用 GPU（所有求解器通用基础参数）
     
     // ========== SPEOS 参数（solver_type="speos" 或未指定）==========
-    use_gpu?: boolean;            // 是否使用 GPU
     simulation_index?: string;    // 仿真索引
     thread_count?: string;        // 线程数
     priority?: string;            // 优先级

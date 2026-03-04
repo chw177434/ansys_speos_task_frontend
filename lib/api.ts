@@ -311,8 +311,10 @@ export interface DirectUploadParams {
   display_name?: string;
   project_dir?: string;
   
+  // ========== 通用基础参数（所有求解器）==========
+  use_gpu?: boolean;  // 是否使用 GPU 求解（SPEOS/FLUENT/Maxwell/Mechanical 均支持）
+  
   // ========== SPEOS 参数 ==========
-  use_gpu?: boolean;
   simulation_index?: string;
   thread_count?: string;
   priority?: string;
@@ -385,7 +387,7 @@ export async function submitDirectUpload(
     if (params.display_name) formData.append("display_name", params.display_name);
     if (params.project_dir) formData.append("project_dir", params.project_dir);
     
-    // ========== SPEOS 参数 ==========
+    // ========== 通用基础参数：是否使用 GPU（所有求解器）==========
     if (params.use_gpu !== undefined) formData.append("use_gpu", String(params.use_gpu));
     if (params.simulation_index) formData.append("simulation_index", params.simulation_index);
     if (params.thread_count) formData.append("thread_count", params.thread_count);
@@ -631,8 +633,10 @@ export interface ConfirmUploadRequest {
   // ⭐ 新增：求解器类型（默认 "speos"）
   solver_type?: SolverType;
   
+  // ========== 通用基础参数（所有求解器）==========
+  use_gpu?: boolean;  // 是否使用 GPU 求解（SPEOS/FLUENT/Maxwell/Mechanical 均支持）
+  
   // ========== SPEOS 参数（solver_type="speos" 或未指定）==========
-  use_gpu?: boolean;
   simulation_index?: string;
   thread_count?: string;
   priority?: string;
