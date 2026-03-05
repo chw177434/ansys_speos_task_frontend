@@ -2174,7 +2174,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               value={jobName}
               onChange={(event) => setJobName(event.target.value)}
               placeholder="任务名称，例如：机翼应力分析"
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -2186,7 +2186,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               <select
                 value={solverType}
                 onChange={(event) => setSolverType(event.target.value as SolverType)}
-                className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               >
                 <option value="speos">💡 SPEOS - 光学仿真</option>
                 <option value="fluent">🌊 FLUENT - 流体力学</option>
@@ -2234,7 +2234,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 const file = event.target.files?.[0] ?? null;
                 setMasterFile(file);
               }}
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
             {masterFileLabel && (
               <p className="mt-1 text-xs text-gray-500">已选择：{masterFileLabel}</p>
@@ -2272,7 +2272,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 }
                 setIncludeFile(file);
               }}
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
             />
             {includeFileLabel && (
               <p className="mt-1 text-xs text-gray-500">
@@ -2298,23 +2298,13 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
             </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Project Directory 输出目录（可选）</label>
-            <input
-              value={projectDir}
-              onChange={(event) => setProjectDir(event.target.value)}
-              placeholder="留空将使用服务器端任务文件夹"
-              className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
           {/* ⭐ 基础配置：是否使用 GPU（所有求解器通用） */}
-          <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
+          <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2.5">
             <div>
               <p className="text-sm font-medium text-slate-700">使用 GPU 求解</p>
               <p className="text-xs text-slate-500">启用后将以 GPU 模式运行，加速计算（需服务器支持）。</p>
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
               <input
                 type="checkbox"
                 checked={useGpu}
@@ -2322,148 +2312,152 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                   setUseGpu(event.target.checked);
                   markFieldModified("useGpu");
                 }}
+                className="rounded border-slate-300"
               />
               启用
             </label>
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl bg-slate-50 p-4">
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
           <button
             type="button"
             onClick={() => setShowAdvanced((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
           >
             <span>高级配置</span>
-            <span>{showAdvanced ? "收起" : "展开"}</span>
+            <span className="text-slate-500 text-xs">{showAdvanced ? "收起" : "展开"}</span>
           </button>
 
           {showAdvanced && (
-            <div className="space-y-4">
+            <div className="space-y-5 pt-1">
               {/* ========== SPEOS 参数 ========== */}
               {solverType === "speos" && (
-                <>
+                <div>
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">SPEOS 高级参数</h4>
                   <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Simulation 序号 (-S)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={simulationIndex}
-                    onChange={(event) => {
-                      setSimulationIndex(event.target.value);
-                      markFieldModified("simulationIndex");
-                    }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Simulation 序号 (-S)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={simulationIndex}
+                      onChange={(event) => {
+                        setSimulationIndex(event.target.value);
+                        markFieldModified("simulationIndex");
+                      }}
+                      placeholder="自动"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">线程数 (-t)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={threadCount}
+                      onChange={(event) => {
+                        setThreadCount(event.target.value);
+                        markFieldModified("threadCount");
+                      }}
+                      placeholder="自动"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">进程优先级 (-p)</label>
+                    <select
+                      value={priority}
+                      onChange={(event) => {
+                        setPriority(event.target.value);
+                        markFieldModified("priority");
+                      }}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    >
+                      {PRIORITY_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">光线/Pass 数 (-r)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={rayCount}
+                      onChange={(event) => {
+                        setRayCount(event.target.value);
+                        markFieldModified("rayCount");
+                      }}
+                      placeholder="使用默认"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">运行时长限制 (分钟, -D)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={durationMinutes}
+                      onChange={(event) => {
+                        setDurationMinutes(event.target.value);
+                        markFieldModified("durationMinutes");
+                      }}
+                      placeholder="不限"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">HPC Job 名称 (-J)</label>
+                    <input
+                      value={hpcJobName}
+                      onChange={(event) => {
+                        setHpcJobName(event.target.value);
+                        markFieldModified("hpcJobName");
+                      }}
+                      placeholder="可选"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">HPC 节点数 (-N)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={nodeCount}
+                      onChange={(event) => {
+                        setNodeCount(event.target.value);
+                        markFieldModified("nodeCount");
+                      }}
+                      placeholder="1"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">HPC walltime (小时, -W)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={0.5}
+                      value={walltimeHours}
+                      onChange={(event) => {
+                        setWalltimeHours(event.target.value);
+                        markFieldModified("walltimeHours");
+                      }}
+                      placeholder="可选"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">线程数 (-t)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={threadCount}
-                    onChange={(event) => {
-                      setThreadCount(event.target.value);
-                      markFieldModified("threadCount");
-                    }}
-                    placeholder="自动"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">进程优先级 (-p)</label>
-                  <select
-                    value={priority}
-                    onChange={(event) => {
-                      setPriority(event.target.value);
-                      markFieldModified("priority");
-                    }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  >
-                    {PRIORITY_OPTIONS.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">光线/Pass 数 (-r)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={rayCount}
-                    onChange={(event) => {
-                      setRayCount(event.target.value);
-                      markFieldModified("rayCount");
-                    }}
-                    placeholder="使用默认"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">运行时长限制 (分钟, -D)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={durationMinutes}
-                    onChange={(event) => {
-                      setDurationMinutes(event.target.value);
-                      markFieldModified("durationMinutes");
-                    }}
-                    placeholder="不限"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">HPC Job 名称 (-J)</label>
-                  <input
-                    value={hpcJobName}
-                    onChange={(event) => {
-                      setHpcJobName(event.target.value);
-                      markFieldModified("hpcJobName");
-                    }}
-                    placeholder="可选"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">HPC 节点数 (-N)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={nodeCount}
-                    onChange={(event) => {
-                      setNodeCount(event.target.value);
-                      markFieldModified("nodeCount");
-                    }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">HPC walltime (小时, -W)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    step={0.5}
-                    value={walltimeHours}
-                    onChange={(event) => {
-                      setWalltimeHours(event.target.value);
-                      markFieldModified("walltimeHours");
-                    }}
-                    placeholder="可选"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </>
-          )}
-          
+              )}
+
           {/* ========== FLUENT 参数 ========== */}
           {solverType === "fluent" && (
             <div className="space-y-4">
-              {/* 参数说明卡片 */}
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">FLUENT 高级参数</h4>
               <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
                 <p className="text-xs text-blue-800">
                   <span className="font-semibold">💡 提示：</span>
@@ -2471,7 +2465,6 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 </p>
               </div>
               
-              {/* 参数预设 */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">快速预设</label>
                 <select
@@ -2525,7 +2518,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     // 重置选择框
                     event.target.value = "";
                   }}
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   defaultValue=""
                 >
                   <option value="" disabled>选择预设配置（可选）</option>
@@ -2541,17 +2534,14 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    维度 (Dimension)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">维度 (Dimension)</label>
                   <select
                     value={dimension}
                     onChange={(event) => {
                       setDimension(event.target.value as "2d" | "3d" | "");
                       markFieldModified("dimension");
                     }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="2d">2D</option>
                     <option value="3d">3D（默认）</option>
@@ -2562,17 +2552,14 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 </div>
                 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    精度 (Precision)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">精度 (Precision)</label>
                   <select
                     value={precision}
                     onChange={(event) => {
                       setPrecision(event.target.value as "sp" | "dp" | "");
                       markFieldModified("precision");
                     }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">请选择</option>
                     <option value="sp">单精度 (sp) - 快速</option>
@@ -2591,10 +2578,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 </div>
                 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    迭代步数 (Iterations)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">迭代步数 (Iterations)</label>
                   <input
                     type="number"
                     min={1}
@@ -2604,7 +2588,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setIterations(Number(event.target.value) || "");
                       markFieldModified("iterations");
                     }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    placeholder="300"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     计算的迭代次数。简单流动 100-200 步，复杂流动 500-1000 步。
@@ -2619,17 +2604,14 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 </div>
                 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    初始化方法 (Initialization)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">初始化方法 (Initialization)</label>
                   <select
                     value={initializationMethod}
                     onChange={(event) => {
                       setInitializationMethod(event.target.value as "hyb" | "standard" | "");
                       markFieldModified("initializationMethod");
                     }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">请选择</option>
                     <option value="standard">标准初始化 (standard)</option>
@@ -2641,10 +2623,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 </div>
                 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    CPU 核心数 (CPU Cores)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">CPU 核心数 (CPU Cores)</label>
                   <input
                     type="number"
                     min={1}
@@ -2654,8 +2633,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setThreadCount(event.target.value);
                       markFieldModified("threadCount");
                     }}
-                    placeholder="默认 32"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    placeholder="32"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     并行计算使用的 CPU 核心数。需根据 License 和硬件限制设置。
@@ -2675,7 +2654,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
           {/* ========== Maxwell 参数 ========== */}
           {solverType === "maxwell" && (
             <div className="space-y-4">
-              {/* 参数说明卡片 */}
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Maxwell 高级参数</h4>
               <div className="rounded-lg bg-purple-50 border border-purple-200 px-3 py-2">
                 <p className="text-xs text-purple-800">
                   <span className="font-semibold">💡 提示：</span>
@@ -2685,10 +2664,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    核心数 (Num Cores)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">核心数 (Num Cores)</label>
                   <input
                     type="number"
                     min={1}
@@ -2701,7 +2677,8 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                         markFieldModified("numCores");
                       }
                     }}
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    placeholder="32"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     并行计算使用的核心数（1-32，根据 License 权限）
@@ -2719,10 +2696,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 </div>
                 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    设计名称 (Design Name)
-                    <span className="ml-1 text-xs text-slate-500">❓</span>
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">设计名称 (Design Name)</label>
                   <input
                     type="text"
                     value={designName}
@@ -2731,7 +2705,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       markFieldModified("designName");
                     }}
                     placeholder="留空则求解所有设计"
-                    className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     如果项目包含多个设计，需要指定要求解的设计名称
@@ -2746,7 +2720,9 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
           
           {/* ========== Mechanical 参数 ========== */}
           {solverType === "mechanical" && (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mechanical 高级参数</h4>
+              <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   核心数 (Thread Count) <span className="text-red-500">*</span>
@@ -2760,7 +2736,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     markFieldModified("threadCount");
                   }}
                   placeholder="8"
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="mt-1 text-xs text-slate-500">并行核心数，建议值：8, 16, 32</p>
               </div>
@@ -2775,12 +2751,26 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     markFieldModified("jobKey");
                   }}
                   placeholder="wing_001"
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="mt-1 text-xs text-slate-500">用于文件命名，建议使用简短的英文标识</p>
               </div>
             </div>
+            </div>
           )}
+
+          {/* ========== 通用：Project Directory（所有求解器，置于高级配置末尾）========== */}
+          <div className="pt-4 mt-4 border-t border-slate-200">
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">通用配置</h4>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Project Directory 输出目录（可选）</label>
+            <input
+              value={projectDir}
+              onChange={(event) => setProjectDir(event.target.value)}
+              placeholder="留空将使用服务器端任务文件夹"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-slate-500">通常无需修改，留空即可</p>
+          </div>
         </div>
           )}
         </div>
