@@ -60,6 +60,8 @@ interface RawTask {
   retry_count?: number | null; // ✅ 重试次数
   retried_task_ids?: string[] | null; // ✅ 重试生成的任务列表
   solver_type?: SolverType | null; // ⭐ 新增：求解器类型
+  /** 任务：Ansys 安装版本（各求解器） */
+  ansys_release?: string | null;
   /** 失败时的简短提示（如「求解器退出码 1」） */
   message?: string | null;
   /** 失败时的详细报错内容（SPEOS/ANSYS 或 Python 异常） */
@@ -1845,6 +1847,14 @@ export default function TasksTable() {
                   <span>{getSolverLabel(task.solver_type)}</span>
                 </span>
               )}
+              {task.solver_type && task.ansys_release ? (
+                <span
+                  className="inline-flex items-center rounded border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800"
+                  title="提交时选择的 ANSYS 安装版本"
+                >
+                  {task.ansys_release}
+                </span>
+              ) : null}
             </div>
             
             {/* ✅ 重试关系信息 */}

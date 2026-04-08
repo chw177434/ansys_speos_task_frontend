@@ -39,11 +39,55 @@ const FORM_STATE_KEY = "speos_task_form_state";
 // UUID 格式验证正则表达式（用于验证 task_id）
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** 各求解器默认 Ansys 安装版本（与后端默认一致） */
+const DEFAULT_SOLVER_ANSYS_RELEASES: Record<SolverType, string> = {
+  speos: "2026R1",
+  fluent: "2026R1",
+  maxwell: "2026R1",
+  mechanical: "2026R1",
+};
+
+const SOLVER_KIND_LABEL: Record<SolverType, string> = {
+  speos: "SPEOS HPC",
+  fluent: "FLUENT",
+  maxwell: "Maxwell",
+  mechanical: "Mechanical",
+};
+
+function formatAnsysReleaseOptionLabel(
+  r: string,
+  isDefaultForSolver: boolean
+): string {
+  const base =
+    r === "2026R1" ? "2026 R1" : r === "2025R2" ? "2025 R2" : r;
+  return isDefaultForSolver ? `${base}（默认）` : base;
+}
+
+function mergeSolverAnsysReleases(
+  parsed: Partial<StoredFormState>
+): Record<SolverType, string> {
+  const out: Record<SolverType, string> = { ...DEFAULT_SOLVER_ANSYS_RELEASES };
+  if (parsed.solverAnsysReleases) {
+    (Object.keys(DEFAULT_SOLVER_ANSYS_RELEASES) as SolverType[]).forEach((k) => {
+      const v = parsed.solverAnsysReleases![k];
+      if (v && String(v).trim()) out[k] = String(v).trim();
+    });
+  }
+  if (parsed.speosAnsysRelease && !parsed.solverAnsysReleases?.speos) {
+    out.speos = parsed.speosAnsysRelease;
+  }
+  return out;
+}
+
 interface StoredFormState {
   profileName: string;
   version: string;
   jobName: string;
   projectDir: string;
+  /** 各求解器独立记忆的 Ansys 版本 */
+  solverAnsysReleases?: Partial<Record<SolverType, string>>;
+  /** @deprecated 仅用于从旧 localStorage 迁移 */
+  speosAnsysRelease?: string;
   useGpu?: boolean;
   simulationIndex?: string;
   threadCount?: string;
@@ -60,6 +104,7 @@ const DEFAULT_FORM_STATE: StoredFormState = {
   version: "",
   jobName: "",
   projectDir: "",
+  solverAnsysReleases: { ...DEFAULT_SOLVER_ANSYS_RELEASES },
   useGpu: false,
   simulationIndex: "0",
   threadCount: "",
@@ -86,6 +131,7 @@ function loadFormState(): StoredFormState {
     return {
       ...DEFAULT_FORM_STATE,
       ...parsed,
+      solverAnsysReleases: mergeSolverAnsysReleases(parsed),
     };
   } catch (error) {
     console.warn("恢复表单状态失败", error);
@@ -130,6 +176,9 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
   const [solverType, setSolverType] = useState<SolverType>(defaultSolverType);
   
   // ⚡ 高级配置字段 - 移除所有默认值，改为空值
+  const [solverAnsysReleases, setSolverAnsysReleases] = useState<
+    Record<SolverType, string>
+  >(() => mergeSolverAnsysReleases(initialState));
   const [useGpu, setUseGpu] = useState(false);
   const [simulationIndex, setSimulationIndex] = useState("");
   const [threadCount, setThreadCount] = useState("");
@@ -272,6 +321,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     setHpcJobName("");
     setNodeCount("");
     setWalltimeHours("");
+    setSolverAnsysReleases({ ...DEFAULT_SOLVER_ANSYS_RELEASES });
     setDimension("");
     setPrecision("");
     setIterations("");
@@ -298,6 +348,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       version,
       jobName,
       projectDir,
+      solverAnsysReleases,
       useGpu,
       simulationIndex,
       threadCount,
@@ -313,6 +364,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
     version,
     jobName,
     projectDir,
+    solverAnsysReleases,
     useGpu,
     simulationIndex,
     threadCount,
@@ -353,6 +405,26 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
 
     fetchConfig();
   }, []);
+
+  // 后端返回的各求解器版本列表变化时，校正选择（避免 localStorage 存了已下线选项）
+  useEffect(() => {
+    const opts = uploadConfig?.solver_ansys_release_options;
+    if (!opts) return;
+    setSolverAnsysReleases((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      (Object.keys(DEFAULT_SOLVER_ANSYS_RELEASES) as SolverType[]).forEach((sol) => {
+        const allowed = opts[sol];
+        if (!allowed?.length) return;
+        if (!allowed.includes(next[sol])) {
+          const def = uploadConfig.solver_default_ansys_release?.[sol];
+          next[sol] = def && allowed.includes(def) ? def : allowed[0];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [uploadConfig]);
 
   // 检查 localStorage 中的未完成上传（TOS 和 Direct 模式）
   useEffect(() => {
@@ -486,6 +558,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         
         // ========== 通用基础参数（所有求解器）==========
         use_gpu: useGpu,
+        ansys_release: solverAnsysReleases[solverType],
         
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
@@ -1011,6 +1084,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         
         // ========== 通用基础参数（所有求解器）==========
         use_gpu: useGpu,
+        ansys_release: solverAnsysReleases[solverType],
         
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
@@ -1390,6 +1464,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
 
     // ========== 通用基础参数：是否使用 GPU（所有求解器）==========
     formData.append("use_gpu", useGpu ? "true" : "false");
+    formData.append("ansys_release", solverAnsysReleases[solverType]);
 
     if (includeArchive) {
       formData.append("include_archive", includeArchive, includeArchive.name);
@@ -1633,6 +1708,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
       
       // ========== 通用基础参数（所有求解器）==========
       use_gpu: useGpu,
+      ansys_release: solverAnsysReleases[solverType],
       
       // ========== SPEOS 参数 ==========
       ...(solverType === "speos" && {
@@ -1848,6 +1924,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         
         // ========== 通用基础参数（所有求解器）==========
         use_gpu: useGpu,
+        ansys_release: solverAnsysReleases[solverType],
         
         // ========== SPEOS 参数 ==========
         ...(solverType === "speos" && {
@@ -2318,6 +2395,48 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 <span>启用</span>
               </label>
             </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              ANSYS 安装版本（{SOLVER_KIND_LABEL[solverType]}）
+            </label>
+            <select
+              value={solverAnsysReleases[solverType]}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSolverAnsysReleases((prev) => ({ ...prev, [solverType]: v }));
+              }}
+              className="w-full max-w-md rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            >
+              {(
+                uploadConfig?.solver_ansys_release_options?.[solverType]?.length
+                  ? uploadConfig.solver_ansys_release_options![solverType]!
+                  : ["2026R1", "2025R2"]
+              ).map((r) => {
+                const apiDef = uploadConfig?.solver_default_ansys_release?.[solverType];
+                const isDefault =
+                  apiDef != null
+                    ? apiDef === r
+                    : r === DEFAULT_SOLVER_ANSYS_RELEASES[solverType];
+                return (
+                  <option key={r} value={r}>
+                    {formatAnsysReleaseOptionLabel(r, isDefault)}
+                  </option>
+                );
+              })}
+            </select>
+            {solverType === "speos" ? (
+              <p className="mt-2 text-xs text-slate-500">
+                须与工程文件所用版本一致。任务执行前会在服务器上 source 对应的{" "}
+                <code className="rounded bg-slate-100 px-1">load_speos*.sh</code>，再启动{" "}
+                <code className="rounded bg-slate-100 px-1">SPEOSHPC.x</code>。
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                须与工程文件所用版本一致。当前版本会随任务提交保存；非 SPEOS 求解器的按版本启动逻辑将在后续接入。
+              </p>
+            )}
           </div>
         </div>
 

@@ -280,6 +280,13 @@ export interface UploadConfigResponse {
   upload_mode: "direct" | "tos";
   max_file_size_mb?: number;
   chunk_size_mb?: number;
+  /** 各求解器可选的 Ansys 安装版本 */
+  solver_ansys_release_options?: Partial<Record<SolverType, string[]>>;
+  solver_default_ansys_release?: Partial<Record<SolverType, string>>;
+  /** @deprecated 请用 solver_ansys_release_options.speos */
+  speos_ansys_releases?: string[];
+  /** @deprecated 请用 solver_default_ansys_release.speos */
+  default_speos_ansys_release?: string;
 }
 
 export async function getUploadConfig() {
@@ -313,6 +320,9 @@ export interface DirectUploadParams {
   
   // ========== 通用基础参数（所有求解器）==========
   use_gpu?: boolean;  // 是否使用 GPU 求解（SPEOS/FLUENT/Maxwell/Mechanical 均支持）
+
+  /** SPEOS：Ansys 安装版本，与后端 load_speos*.sh 对应（默认 2026R1） */
+  ansys_release?: string;
   
   // ========== SPEOS 参数 ==========
   simulation_index?: string;
@@ -389,6 +399,9 @@ export async function submitDirectUpload(
     
     // ========== 通用基础参数：是否使用 GPU（所有求解器）==========
     if (params.use_gpu !== undefined) formData.append("use_gpu", String(params.use_gpu));
+    if (params.ansys_release && String(params.ansys_release).trim()) {
+      formData.append("ansys_release", String(params.ansys_release).trim());
+    }
     if (params.simulation_index) formData.append("simulation_index", params.simulation_index);
     if (params.thread_count) formData.append("thread_count", params.thread_count);
     if (params.priority) formData.append("priority", params.priority);
@@ -635,6 +648,9 @@ export interface ConfirmUploadRequest {
   
   // ========== 通用基础参数（所有求解器）==========
   use_gpu?: boolean;  // 是否使用 GPU 求解（SPEOS/FLUENT/Maxwell/Mechanical 均支持）
+
+  /** SPEOS：Ansys 安装版本 */
+  ansys_release?: string;
   
   // ========== SPEOS 参数（solver_type="speos" 或未指定）==========
   simulation_index?: string;
