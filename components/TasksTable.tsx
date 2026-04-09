@@ -1642,11 +1642,13 @@ export default function TasksTable() {
   const handleRetry = useCallback(
     async (task: TableTask) => {
       const taskId = task.task_id;
+      const isSuccess = task.status === "SUCCESS";
       const confirmed = window.confirm(
-        "确定要重新执行此任务吗？\n\n" +
-        "将使用相同的参数重新提交任务。\n" +
-        "文件将被复制到新任务中。\n\n" +
-        "下一步将提示输入新任务名称（可修改或留空使用默认「原名 (重试)」）。"
+        (isSuccess
+          ? "当前任务已成功完成。确定要再提交一次吗？\n\n将复制相同输入与参数到新任务（新 task_id），不会覆盖本次结果。\n\n"
+          : "确定要重新执行此任务吗？\n\n将使用相同的参数重新提交任务。\n") +
+        "文件将被复制到新任务目录。\n\n" +
+        "下一步可输入新任务显示名称（留空则使用「原名 (重试)」）。"
       );
 
       if (!confirmed) return;
@@ -1839,8 +1841,12 @@ export default function TasksTable() {
       const statusInfo = getStatusInfo(task.status);
       const badgeClass = statusBadgeClass(task.status);
 
-      // 判断是否可以重试（失败状态）
-      const canRetry = ["FAILURE", "FAILED", "REVOKED", "CANCELLED", "CANCELED", "ABORTED"].includes(task.status);
+      // 失败/取消等：展示错误详情区域
+      const isFailureStatus = ["FAILURE", "FAILED", "REVOKED", "CANCELLED", "CANCELED", "ABORTED"].includes(
+        task.status
+      );
+      // 重新执行：失败任务可重试；成功任务也可基于相同输入再跑（后端不限制状态，仅要求输入目录仍在）
+      const canReExecute = isFailureStatus || task.status === "SUCCESS";
       
       // 判断是否可以停止（运行中状态）
       const canStop = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING"].includes(task.status);
@@ -1903,7 +1909,7 @@ export default function TasksTable() {
                 <span>{statusInfo.label}</span>
               </span>
               {/* 失败时展示简短提示（message）及可展开的错误详情（error_detail） */}
-              {canRetry && (
+              {isFailureStatus && (
                 <div className="mt-1.5 w-full max-w-[280px] text-left">
                   {(task.message || task.error_detail) && (
                     <p className="text-xs text-red-600 font-medium break-words" title={task.message || undefined}>
@@ -2009,13 +2015,17 @@ export default function TasksTable() {
                 </button>
               )}
               
-              {/* ✅ 重试按钮（仅失败状态显示） */}
-              {canRetry && (
+              {/* ✅ 重新执行：失败/已取消等 + 已成功（复制输入再提交，可改名） */}
+              {canReExecute && (
                 <button
                   onClick={() => handleRetry(task)}
                   disabled={task.retrying}
                   className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 transition-colors duration-200 font-medium flex items-center gap-1.5"
-                  title="重新执行此任务"
+                  title={
+                    task.status === "SUCCESS"
+                      ? "基于相同输入再提交一个新任务（可改名）"
+                      : "重新执行此任务（可改名）"
+                  }
                 >
                   {task.retrying ? (
                     <>
