@@ -50,6 +50,8 @@ interface RawTask {
   task_id: string;
   status: string;
   created_at?: number;
+  /** 列表优先展示；与 job_name 二选一或并存 */
+  display_name?: string | null;
   job_name?: string | null;
   download_url?: string | null;
   download_name?: string | null;
@@ -956,7 +958,7 @@ export default function TasksTable() {
     const normalizedSolverType = solverTypeFilter.trim();
 
     return baseRows.filter((task) => {
-      const jobName = (task.job_name || "").toLowerCase();
+      const jobName = (task.display_name || task.job_name || "").toLowerCase();
       const matchesName =
         normalizedName === "" ||
         jobName.includes(normalizedName) ||
@@ -1636,27 +1638,40 @@ export default function TasksTable() {
     [applyTaskUpdate, fetchTasks, isClientPaging, page, pageSize, totalPages]
   );
 
-  // ✅ 重试任务处理函数
+  // ✅ 重试任务处理函数（可指定新任务显示名称）
   const handleRetry = useCallback(
-    async (taskId: string) => {
-      // 确认操作
+    async (task: TableTask) => {
+      const taskId = task.task_id;
       const confirmed = window.confirm(
         "确定要重新执行此任务吗？\n\n" +
         "将使用相同的参数重新提交任务。\n" +
-        "文件将被复制到新任务中。"
+        "文件将被复制到新任务中。\n\n" +
+        "下一步将提示输入新任务名称（可修改或留空使用默认「原名 (重试)」）。"
       );
-      
+
       if (!confirmed) return;
 
-      applyTaskUpdate(taskId, (task) => ({
-        ...task,
+      const baseLabel =
+        (task.display_name || task.job_name || "").trim() || "任务";
+      const suggested = `${baseLabel} (重试)`;
+      const proposed = window.prompt(
+        "请输入重新执行后的任务显示名称：\n（留空则使用下方默认文案）",
+        suggested
+      );
+      if (proposed === null) return;
+
+      const trimmedName = proposed.trim();
+
+      applyTaskUpdate(taskId, (t) => ({
+        ...t,
         retrying: true,
         actionError: null,
       }));
 
       try {
         const result: RetryTaskResponse = await retryTask(taskId, {
-          copy_files: true, // 默认复制文件（更安全）
+          copy_files: true,
+          ...(trimmedName ? { display_name: trimmedName } : {}),
         });
 
         // 显示成功消息
@@ -1834,8 +1849,11 @@ export default function TasksTable() {
         <tr key={task.task_id} className="border-b last:border-b-0 align-top">
           <td className="px-3 py-2 font-medium text-gray-800">
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="break-words max-w-[200px]" title={task.job_name || "-"}>
-                {task.job_name || "-"}
+              <div
+                className="break-words max-w-[200px]"
+                title={task.display_name || task.job_name || "-"}
+              >
+                {task.display_name || task.job_name || "-"}
               </div>
               {/* ⭐ 新增：求解器类型标签 */}
               {task.solver_type && (
@@ -1994,7 +2012,7 @@ export default function TasksTable() {
               {/* ✅ 重试按钮（仅失败状态显示） */}
               {canRetry && (
                 <button
-                  onClick={() => handleRetry(task.task_id)}
+                  onClick={() => handleRetry(task)}
                   disabled={task.retrying}
                   className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 transition-colors duration-200 font-medium flex items-center gap-1.5"
                   title="重新执行此任务"

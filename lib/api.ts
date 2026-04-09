@@ -181,6 +181,8 @@ export interface RetryTaskRequest {
                        // true: 复制文件（安全，占用空间）
                        // false: 创建软/硬链接（节省空间，但原文件不能删除）
   submitter?: string;  // 可选：覆盖提交人信息
+  /** 重新执行后的任务显示名称；不传或空白则使用「原名 (重试)」 */
+  display_name?: string;
 }
 
 /**
