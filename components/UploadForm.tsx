@@ -2432,9 +2432,15 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 <code className="rounded bg-slate-100 px-1">load_speos*.sh</code>，再启动{" "}
                 <code className="rounded bg-slate-100 px-1">SPEOSHPC.x</code>。
               </p>
+            ) : solverType === "fluent" ? (
+              <p className="mt-2 text-xs text-slate-500">
+                须与工程文件所用版本一致。任务将按所选版本调用对应 Fluent 可执行文件（如{" "}
+                <code className="rounded bg-slate-100 px-1">v261</code> /{" "}
+                <code className="rounded bg-slate-100 px-1">v252</code>），并以无界面批处理方式自动求解。
+              </p>
             ) : (
               <p className="mt-2 text-xs text-slate-500">
-                须与工程文件所用版本一致。当前版本会随任务提交保存；非 SPEOS 求解器的按版本启动逻辑将在后续接入。
+                须与工程文件所用版本一致。当前版本会随任务提交保存；非 SPEOS/FLUENT 求解器的按版本启动逻辑将在后续接入。
               </p>
             )}
           </div>

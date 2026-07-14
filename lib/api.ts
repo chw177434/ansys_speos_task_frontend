@@ -323,7 +323,7 @@ export interface DirectUploadParams {
   // ========== 通用基础参数（所有求解器）==========
   use_gpu?: boolean;  // 是否使用 GPU 求解（SPEOS/FLUENT/Maxwell/Mechanical 均支持）
 
-  /** SPEOS：Ansys 安装版本，与后端 load_speos*.sh 对应（默认 2026R1） */
+  /** Ansys 安装版本：SPEOS 对应 load_speos*.sh；FLUENT 对应 v261/v252 可执行路径（默认 2026R1） */
   ansys_release?: string;
   
   // ========== SPEOS 参数 ==========
@@ -651,7 +651,7 @@ export interface ConfirmUploadRequest {
   // ========== 通用基础参数（所有求解器）==========
   use_gpu?: boolean;  // 是否使用 GPU 求解（SPEOS/FLUENT/Maxwell/Mechanical 均支持）
 
-  /** SPEOS：Ansys 安装版本 */
+  /** Ansys 安装版本（SPEOS / FLUENT 等） */
   ansys_release?: string;
   
   // ========== SPEOS 参数（solver_type="speos" 或未指定）==========
