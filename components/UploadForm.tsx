@@ -2614,7 +2614,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(300);
-                      setThreadCount("32");
+                      setThreadCount("64");
                       setInitializationMethod("hyb");
                       markFieldModified("dimension");
                       markFieldModified("precision");
@@ -2762,16 +2762,16 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setThreadCount(event.target.value);
                       markFieldModified("threadCount");
                     }}
-                    placeholder="32"
+                    placeholder="64"
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
-                    并行计算使用的 CPU 核心数。需根据 License 和硬件限制设置。
+                    并行计算使用的 CPU 核心数。未填写时默认 64 核（服务器共 96 逻辑核）。
                   </p>
-                  {threadCount && Number(threadCount) > 64 && (
+                  {threadCount && Number(threadCount) > 80 && (
                     <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
                       <p className="text-xs text-amber-700">
-                        ⚠️ CPU 核心数过多可能会降低并行效率
+                        ⚠️ CPU 核心数过高可能会降低并行效率或影响同机其他任务
                       </p>
                     </div>
                   )}
