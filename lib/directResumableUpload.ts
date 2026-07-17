@@ -60,6 +60,8 @@ export interface DirectResumableUploadOptions {
   file: File | Blob;
   filename: string;
   fileType: "master" | "include";
+  /** 求解器类型：后端按此写入对应 data 目录 */
+  solverType?: "speos" | "fluent" | "maxwell" | "mechanical";
   
   // 可选：用于断点续传
   existingTaskId?: string;
@@ -100,6 +102,7 @@ export class DirectResumableUploadManager {
   private file: File | Blob;
   private filename: string;
   private fileType: "master" | "include";
+  private solverType: "speos" | "fluent" | "maxwell" | "mechanical";
   
   private taskId: string | null = null;
   private uploadId: string | null = null;
@@ -128,6 +131,7 @@ export class DirectResumableUploadManager {
     this.file = options.file;
     this.filename = options.filename;
     this.fileType = options.fileType;
+    this.solverType = options.solverType || "speos";
     
     this.taskId = options.existingTaskId || null;
     this.uploadId = options.existingUploadId || null;
@@ -315,6 +319,7 @@ export class DirectResumableUploadManager {
       file_size: this.file.size,
       file_type: this.fileType,  // 传入原始 file_type，后端会自动修正
       chunk_size: CHUNK_SIZE,
+      solver_type: this.solverType,
     };
     
     // 如果已有 task_id（例如 include 文件需要使用与 master 相同的 task_id），传递给后端
@@ -322,6 +327,7 @@ export class DirectResumableUploadManager {
       initRequest.task_id = this.taskId;
       console.log(`[Direct] 📌 使用指定的 task_id: ${this.taskId}`);
     }
+    console.log(`[Direct] 📌 solver_type: ${this.solverType}`);
     
     const initResponse = await initDirectMultipartUpload(initRequest);
     
@@ -620,6 +626,7 @@ export async function uploadFileWithDirectResumable(
   options?: {
     existingTaskId?: string;
     existingUploadId?: string;
+    solverType?: "speos" | "fluent" | "maxwell" | "mechanical";
     onProgress?: (info: DirectUploadProgressInfo) => void;
     onChunkComplete?: (chunkIndex: number, totalChunks: number) => void;
     abortSignal?: AbortSignal;
@@ -630,6 +637,7 @@ export async function uploadFileWithDirectResumable(
       file,
       filename,
       fileType,
+      solverType: options?.solverType,
       existingTaskId: options?.existingTaskId,
       existingUploadId: options?.existingUploadId,
       onProgress: options?.onProgress,

@@ -1217,6 +1217,8 @@ export interface DirectMultipartInitRequest {
   content_type?: string;  // 可选：文件内容类型（如 "application/octet-stream"）
   chunk_size?: number;
   task_id?: string;  // 可选：如果提供，使用指定的 task_id（用于 include 文件与 master 文件使用相同的 task_id）
+  /** 求解器类型：决定大文件合并落盘目录（fluent → fluent_data，speos → speos_data） */
+  solver_type?: SolverType;
   job_name?: string;  // 可选：任务名称
   submitter?: string;  // 可选：提交者
 }

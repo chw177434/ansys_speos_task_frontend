@@ -830,6 +830,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
         {
           existingTaskId: existingMasterTaskId,
           existingUploadId: existingMasterUploadId,
+          solverType,
           onProgress: (info: DirectUploadProgressInfo) => {
             setTotalChunks(info.totalChunks);
             setUploadedChunks(info.uploadedChunks);
@@ -941,6 +942,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
           {
             existingTaskId: includeTaskIdToUse,  // 使用 master 的 task_id
             existingUploadId: existingIncludeUploadId,
+            solverType,
             onProgress: (info: DirectUploadProgressInfo) => {
               setTotalChunks(info.totalChunks);
               setUploadedChunks(info.uploadedChunks);
