@@ -24,8 +24,9 @@ _tf_cmdline() {
 
 _tf_cwd() {
     local pid="$1"
+    # 限时读取。个别 Ansys 进程卡在网络目录上时，readlink /proc/pid/cwd 会一直停住。
     if [[ -e "/proc/${pid}/cwd" ]]; then
-        readlink -f "/proc/${pid}/cwd" 2>/dev/null || true
+        timeout 1 readlink -f "/proc/${pid}/cwd" 2>/dev/null || true
     fi
 }
 
@@ -45,17 +46,20 @@ this_frontend_owns_pid() {
     ps -p "$pid" >/dev/null 2>&1 || return 1
 
     cmd="$(_tf_cmdline "$pid")"
-    cwd="$(_tf_cwd "$pid")"
-    [[ -n "$cmd" || -n "$cwd" ]] || return 1
+    [[ -n "$cmd" ]] || return 1
 
     if [[ "$cmd" == *"${PROJECT_ROOT}/node_modules/next"* || "$cmd" == *"${PROJECT_ROOT}/node_modules/.bin/next"* ]]; then
         return 0
     fi
 
+    # 只有命令行像 Next 时才读工作目录，避免对全机进程做 readlink。
+    if [[ "$cmd" != *"next dev"* && "$cmd" != *"next-server"* && "$cmd" != *"next/dist/"* ]]; then
+        return 1
+    fi
+
+    cwd="$(_tf_cwd "$pid")"
     if [[ "$cwd" == "$PROJECT_ROOT" || "$cwd" == "$PROJECT_ROOT/"* ]]; then
-        if [[ "$cmd" == *"next dev"* || "$cmd" == *"next-server"* || "$cmd" == *"next/dist/"* ]]; then
-            return 0
-        fi
+        return 0
     fi
 
     return 1
@@ -102,11 +106,14 @@ this_frontend_collect_pids() {
         fi
     fi
 
-    for pid in $(ps -eo pid= 2>/dev/null); do
+    # 先用一次 ps 按命令行缩小范围，再确认是不是本工程。
+    while read -r pid args; do
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+        [[ "$args" == *"next"* || "$args" == *"${PROJECT_ROOT}"* ]] || continue
         if this_frontend_owns_pid "$pid"; then
             seen["$pid"]=1
         fi
-    done
+    done < <(ps -eo pid=,args= 2>/dev/null)
 
     for pid in "${!seen[@]}"; do
         echo "$pid"
