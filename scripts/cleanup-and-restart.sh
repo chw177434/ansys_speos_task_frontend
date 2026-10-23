@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# 完全清理所有前端服务并在3000端口重启
-# Author: AI Assistant
-# Date: 2025-11-12
+# 只清理并重启本工程前端（默认端口 3000）。
+# 不会按 next / next-server 进程名全局结束，也不会动其他端口上的应用。
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,9 +9,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
+# shellcheck source=lib/this-frontend.sh
+source "$SCRIPT_DIR/lib/this-frontend.sh"
+
 echo "========================================="
-echo "  清理所有前端服务"
+echo "  只重启本工程前端"
 echo "========================================="
+echo ""
+echo -e "工程目录: ${PROJECT_ROOT}"
+echo -e "目标端口: ${THIS_FRONTEND_PORT}"
 echo ""
 
 # Colors
@@ -22,34 +27,22 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# 1. 停止所有 Next.js 进程
-echo -e "${CYAN}1. 查找并停止所有 Next.js 进程...${NC}"
-NEXT_PIDS=$(ps aux | grep 'next dev\|next-server' | grep -v grep | awk '{print $2}')
-
-if [ -z "$NEXT_PIDS" ]; then
-    echo -e "${GREEN}✓ 没有发现 Next.js 进程${NC}"
-else
-    echo -e "${YELLOW}发现以下 Next.js 进程：${NC}"
-    ps aux | grep 'next dev\|next-server' | grep -v grep
-    echo ""
-    echo -e "${YELLOW}正在停止...${NC}"
-    echo "$NEXT_PIDS" | xargs kill -9 2>/dev/null
-    sleep 2
-    echo -e "${GREEN}✓ 所有 Next.js 进程已停止${NC}"
+# 1. 只停止本工程前端
+echo -e "${CYAN}1. 停止本工程前端进程...${NC}"
+this_frontend_stop
+if this_frontend_collect_pids | grep -q .; then
+    echo -e "${RED}✗ 本工程前端没有停干净，已中止重启。其他应用未改动。${NC}"
+    exit 1
 fi
 echo ""
 
-# 2. 查找并停止占用3000-3010端口的进程
-echo -e "${CYAN}2. 检查并清理端口 3000-3010...${NC}"
-for port in {3000..3010}; do
-    PID=$(lsof -ti:$port 2>/dev/null || fuser $port/tcp 2>/dev/null)
-    if [ ! -z "$PID" ]; then
-        echo -e "${YELLOW}端口 $port 被进程 $PID 占用，正在停止...${NC}"
-        kill -9 $PID 2>/dev/null
-        echo -e "${GREEN}✓ 端口 $port 已释放${NC}"
-    fi
-done
-echo -e "${GREEN}✓ 端口检查完成${NC}"
+# 2. 只确认本工程端口。被其他应用占用时中止，不结束对方。
+echo -e "${CYAN}2. 确认端口 ${THIS_FRONTEND_PORT} 没有被其他应用占用...${NC}"
+if ! this_frontend_assert_port_available; then
+    echo -e "${RED}✗ 未重启。其他应用保持原样。${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ 端口 ${THIS_FRONTEND_PORT} 可以给本工程使用${NC}"
 echo ""
 
 # 3. 清理 PID 文件
@@ -86,21 +79,23 @@ else
 fi
 echo ""
 
-# 6. 验证端口3000是否可用
-echo -e "${CYAN}6. 验证端口 3000...${NC}"
-if lsof -i:3000 > /dev/null 2>&1 || fuser 3000/tcp > /dev/null 2>&1; then
-    echo -e "${RED}✗ 端口 3000 仍被占用！${NC}"
-    echo -e "${YELLOW}占用进程：${NC}"
-    lsof -i:3000 2>/dev/null || fuser -v 3000/tcp 2>&1
+# 6. 再次确认本工程端口仍未被其他应用占用
+echo -e "${CYAN}6. 再次确认端口 ${THIS_FRONTEND_PORT}...${NC}"
+if ! this_frontend_assert_port_available; then
+    echo -e "${RED}✗ 端口 ${THIS_FRONTEND_PORT} 被其他应用占用，已停止启动。${NC}"
     exit 1
-else
-    echo -e "${GREEN}✓ 端口 3000 可用${NC}"
 fi
+# 若本工程进程还在听这个端口，不能再拉起一份
+if [[ -n "$(this_frontend_port_pids "$THIS_FRONTEND_PORT" | head -n 1)" ]]; then
+    echo -e "${RED}✗ 本工程前端仍占用端口 ${THIS_FRONTEND_PORT}，启动已取消。${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ 端口 ${THIS_FRONTEND_PORT} 可用${NC}"
 echo ""
 
 # 7. 启动开发服务器
 echo "========================================="
-echo -e "${CYAN}7. 启动开发服务器（端口 3000）...${NC}"
+echo -e "${CYAN}7. 启动开发服务器（端口 ${THIS_FRONTEND_PORT}）...${NC}"
 echo "========================================="
 echo ""
 
@@ -134,8 +129,8 @@ echo -e "${CYAN}实时查看日志：${NC}"
 echo "  ./view-logs.sh -f"
 echo ""
 echo -e "${CYAN}访问地址：${NC}"
-echo "  http://localhost:3000"
-echo "  http://$(hostname -I | awk '{print $1}'):3000"
+echo "  http://localhost:${THIS_FRONTEND_PORT}"
+echo "  http://$(hostname -I | awk '{print $1}'):${THIS_FRONTEND_PORT}"
 echo ""
 echo -e "${YELLOW}验证代码是否生效：${NC}"
 echo "  在浏览器 Console 中运行："

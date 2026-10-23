@@ -2440,9 +2440,16 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                 <code className="rounded bg-slate-100 px-1">v261</code> /{" "}
                 <code className="rounded bg-slate-100 px-1">v252</code>），并以无界面批处理方式自动求解。
               </p>
+            ) : solverType === "mechanical" ? (
+              <p className="mt-2 text-xs text-slate-500">
+                须与工程文件所用版本一致。任务将按所选版本调用对应 MAPDL 可执行文件（如{" "}
+                <code className="rounded bg-slate-100 px-1">v261/ansys261</code> /{" "}
+                <code className="rounded bg-slate-100 px-1">v252/ansys252</code>
+                ），并以批处理方式求解。
+              </p>
             ) : (
               <p className="mt-2 text-xs text-slate-500">
-                须与工程文件所用版本一致。当前版本会随任务提交保存；非 SPEOS/FLUENT 求解器的按版本启动逻辑将在后续接入。
+                须与工程文件所用版本一致。当前版本会随任务提交保存；Maxwell 的按版本启动逻辑将在后续接入。
               </p>
             )}
           </div>

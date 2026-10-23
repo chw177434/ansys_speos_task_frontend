@@ -17,6 +17,9 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# shellcheck source=lib/this-frontend.sh
+source "$SCRIPT_DIR/lib/this-frontend.sh"
+
 PID_FILE="nextjs-dev.pid"
 LOG_FILE="nextjs-dev.log"
 
@@ -41,17 +44,17 @@ if [ -f "$PID_FILE" ]; then
         echo ""
         
         # Check port
-        if netstat -tlnp 2>/dev/null | grep -q ":3000"; then
-            echo -e "${GREEN}✓ Port 3000 is open${NC}"
+        if netstat -tlnp 2>/dev/null | grep -q ":${THIS_FRONTEND_PORT}"; then
+            echo -e "${GREEN}✓ Port ${THIS_FRONTEND_PORT} is open${NC}"
             echo ""
             echo -e "${CYAN}Network connections:${NC}"
-            netstat -tlnp 2>/dev/null | grep ":3000" || ss -tlnp | grep ":3000"
+            netstat -tlnp 2>/dev/null | grep ":${THIS_FRONTEND_PORT}" || ss -tlnp | grep ":${THIS_FRONTEND_PORT}"
             echo ""
             echo -e "${GREEN}Server URL:${NC}"
-            echo -e "  → Local:   http://localhost:3000"
-            echo -e "  → Network: http://$(hostname -I | awk '{print $1}'):3000"
+            echo -e "  → Local:   http://localhost:${THIS_FRONTEND_PORT}"
+            echo -e "  → Network: http://$(hostname -I | awk '{print $1}'):${THIS_FRONTEND_PORT}"
         else
-            echo -e "${YELLOW}⚠ Port 3000 is not listening yet${NC}"
+            echo -e "${YELLOW}⚠ Port ${THIS_FRONTEND_PORT} is not listening yet${NC}"
             echo -e "${CYAN}Server may still be starting up...${NC}"
         fi
     else
@@ -63,14 +66,13 @@ else
     echo -e "${CYAN}Server may not be running, or was not started with start-dev-background.sh${NC}"
     echo ""
     
-    # Search for Next.js processes
-    echo -e "${YELLOW}Searching for Next.js processes...${NC}"
-    PIDS=$(ps aux | grep 'next dev' | grep -v grep)
-    if [ -z "$PIDS" ]; then
-        echo -e "${RED}✗ No Next.js processes found${NC}"
+    echo -e "${YELLOW}Searching for this project's frontend processes...${NC}"
+    FOUND="$(this_frontend_collect_pids | sort -u)"
+    if [ -z "$FOUND" ]; then
+        echo -e "${RED}✗ 没有发现本工程前端进程${NC}"
     else
-        echo -e "${GREEN}Found Next.js processes:${NC}"
-        echo "$PIDS"
+        echo -e "${GREEN}Found this project's frontend processes:${NC}"
+        echo "$FOUND"
     fi
 fi
 

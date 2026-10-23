@@ -66,10 +66,8 @@ if [ "$BACKEND_CODE" != "200" ]; then
     echo "   请确认后端的准确接口路径"
 elif [ "$FRONTEND_CODE" != "200" ]; then
     echo "❌ 前端代理配置有问题"
-    echo "   需要完全重启 Next.js："
-    echo "   pkill -9 -f next"
-    echo "   rm -rf .next"
-    echo "   $SCRIPT_DIR/start-dev-background.sh"
+    echo "   需要重启本工程前端（不会结束其他应用）："
+    echo "   $SCRIPT_DIR/cleanup-and-restart.sh"
 else
     echo "✅ 一切正常！"
 fi

@@ -17,6 +17,9 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# shellcheck source=lib/this-frontend.sh
+source "$SCRIPT_DIR/lib/this-frontend.sh"
+
 LOG_FILE="nextjs-dev.log"
 PID_FILE="nextjs-dev.pid"
 
@@ -69,6 +72,16 @@ echo -e "${CYAN}npm version: $(npm --version)${NC}"
 echo ""
 
 # Start in background
+if ! this_frontend_assert_port_available; then
+    echo -e "${RED}✗ 端口 ${THIS_FRONTEND_PORT} 被其他应用占用，未启动，也未结束该应用。${NC}"
+    exit 1
+fi
+if [[ -n "$(this_frontend_port_pids "$THIS_FRONTEND_PORT" | head -n 1)" ]]; then
+    echo -e "${YELLOW}⚠ 本工程前端已占用端口 ${THIS_FRONTEND_PORT}${NC}"
+    echo -e "${CYAN}To stop it, run: ./stop-dev.sh${NC}"
+    exit 1
+fi
+
 echo -e "${GREEN}Starting Next.js server in background...${NC}"
 echo -e "${CYAN}Log file: $LOG_FILE${NC}"
 echo ""
@@ -95,8 +108,8 @@ if ps -p "$SERVER_PID" > /dev/null 2>&1; then
     echo -e "${CYAN}Log file: $LOG_FILE${NC}"
     echo ""
     echo -e "${GREEN}Server will be available at:${NC}"
-    echo -e "${GREEN}  → Local:   http://localhost:3000${NC}"
-    echo -e "${GREEN}  → Network: http://$(hostname -I | awk '{print $1}'):3000${NC}"
+    echo -e "${GREEN}  → Local:   http://localhost:${THIS_FRONTEND_PORT}${NC}"
+    echo -e "${GREEN}  → Network: http://$(hostname -I | awk '{print $1}'):${THIS_FRONTEND_PORT}${NC}"
     echo ""
     echo -e "${YELLOW}Useful commands:${NC}"
     echo -e "  ${CYAN}View logs:${NC}       ./view-logs.sh"
