@@ -15,6 +15,7 @@ import {
   type StopTaskResponse,
   type SolverType,
 } from "../lib/api";
+import MechanicalMonitorPanel from "./MechanicalMonitorPanel";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
@@ -432,6 +433,10 @@ function renderProgressInfo(
     load_step,
     substep,
     iteration,
+    cumulative_iteration,
+    cpu_cores_used,
+    cpu_cores_requested,
+    memory_mb,
   } = progressInfo;
   
   // 检查是否有任何有效的进度信息
@@ -441,7 +446,8 @@ function renderProgressInfo(
   const hasPassInfo = current_pass != null && total_passes != null;
   const hasSensorInfo = current_sensor != null && total_sensors != null;
   const hasFluentInfo = current_iteration != null || continuity_residual != null;
-  const hasMechanicalInfo = load_step != null || substep != null || iteration != null;
+  const hasMechanicalInfo = load_step != null || substep != null || iteration != null
+    || cumulative_iteration != null || cpu_cores_used != null || memory_mb != null;
   
   if (!hasEstimatedTime && !hasProgressPercent && !hasCurrentStep && !hasPassInfo && 
       !hasSensorInfo && !hasFluentInfo && !hasMechanicalInfo && !status && !converged) {
@@ -718,6 +724,35 @@ function renderProgressInfo(
                 <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{iteration}</span>
               </div>
             )}
+
+            {cumulative_iteration != null && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">∑</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>累计迭代:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>{cumulative_iteration}</span>
+              </div>
+            )}
+
+            {cpu_cores_used != null && Number.isFinite(cpu_cores_used) && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">CPU</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>占用:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+                  {cpu_cores_used.toFixed(1)}
+                  {cpu_cores_requested ? ` / ${cpu_cores_requested} 核` : " 核"}
+                </span>
+              </div>
+            )}
+
+            {memory_mb != null && Number.isFinite(memory_mb) && (
+              <div className="flex items-center gap-2 bg-white/60 rounded-md px-2 py-1">
+                <span className="text-xs">RAM</span>
+                <span className={`text-xs ${colorTheme.textTertiary} font-medium`}>内存:</span>
+                <span className={`text-xs ${colorTheme.textPrimary} font-semibold ml-auto`}>
+                  {memory_mb >= 1024 ? `${(memory_mb / 1024).toFixed(1)} GB` : `${Math.round(memory_mb)} MB`}
+                </span>
+              </div>
+            )}
             
             {/* 收敛状态 */}
             {converged && (
@@ -919,6 +954,7 @@ export default function TasksTable() {
   const [solverTypeFilter, setSolverTypeFilter] = useState("");
   /** 当前展开错误详情的任务 ID（失败任务可展开查看 error_detail） */
   const [expandedErrorTaskId, setExpandedErrorTaskId] = useState<string | null>(null);
+  const [monitorTaskId, setMonitorTaskId] = useState<string | null>(null);
 
   const isClientPaging = pagingMode === "client" && Array.isArray(allRows);
 
@@ -1850,9 +1886,13 @@ export default function TasksTable() {
       
       // 判断是否可以停止（运行中状态）
       const canStop = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING"].includes(task.status);
+      const monitorRunning = ["RUNNING", "PROGRESS", "STARTED", "DOWNLOADING", "RETRY"].includes(task.status);
+
+      const monitorOpen = task.solver_type === "mechanical" && monitorTaskId === task.task_id;
 
       return (
-        <tr key={task.task_id} className="border-b last:border-b-0 align-top">
+        <React.Fragment key={task.task_id}>
+        <tr className="border-b last:border-b-0 align-top">
           <td className="px-3 py-2 font-medium text-gray-800">
             <div className="flex items-center gap-2 flex-wrap">
               <div
@@ -1988,6 +2028,17 @@ export default function TasksTable() {
             )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              {task.solver_type === "mechanical" && (
+                <button
+                  type="button"
+                  onClick={() => setMonitorTaskId((current) => (current === task.task_id ? null : task.task_id))}
+                  className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-800 hover:bg-emerald-100 font-medium"
+                  title="查看求解日志、CPU、内存和收敛曲线"
+                >
+                  {monitorOpen ? "收起求解过程" : "求解过程"}
+                </button>
+              )}
+
               {/* ✅ 停止按钮（仅运行中状态显示） */}
               {canStop && (
                 <button
@@ -2076,6 +2127,14 @@ export default function TasksTable() {
             )}
           </td>
         </tr>
+        {monitorOpen && (
+          <tr className="border-b bg-emerald-50/40">
+            <td colSpan={6} className="px-3 py-3">
+              <MechanicalMonitorPanel taskId={task.task_id} running={monitorRunning} />
+            </td>
+          </tr>
+        )}
+        </React.Fragment>
       );
     });
   };

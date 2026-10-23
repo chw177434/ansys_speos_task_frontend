@@ -94,7 +94,13 @@ export interface ProgressInfo {
   // ========== Mechanical 字段 ==========
   load_step?: number | null;           // 📊 载荷步
   substep?: number | null;             // 🔹 子步
-  iteration?: number | null;           // 🔄 迭代
+  iteration?: number | null;           // 🔄 当前子步内的平衡迭代
+  cumulative_iteration?: number | null; // 累计平衡迭代（收敛曲线横轴）
+  cpu_cores_used?: number | null;      // 求解进程树占用的核数
+  cpu_cores_requested?: number | null; // 任务申请的核数
+  memory_mb?: number | null;           // 求解进程树 RSS
+  host_memory_available_mb?: number | null;
+  log_idle_seconds?: number | null;    // 距离 .out 上次增长的秒数
   
   // ========== 通用字段 ==========
   message?: string | null;             // 附加信息
@@ -169,6 +175,63 @@ export async function getTaskStatus(taskId: string) {
 /** 获取任务详情（含失败时的 message、error_detail） */
 export async function getTaskDetail(taskId: string) {
   return request<TaskDetail>(`/tasks/${taskId}/detail`);
+}
+
+export interface MechanicalConvergencePoint {
+  i: number;
+  t?: number | null;
+  load_step?: number | null;
+  substep?: number | null;
+  iteration?: number | null;
+  force?: number | null;
+  force_criterion?: number | null;
+  disp?: number | null;
+  disp_criterion?: number | null;
+  moment?: number | null;
+  moment_criterion?: number | null;
+  heat?: number | null;
+  heat_criterion?: number | null;
+  rotation?: number | null;
+  rotation_criterion?: number | null;
+  substep_converged?: boolean;
+  load_step_converged?: boolean;
+}
+
+export interface MechanicalResourceSample {
+  t: number;
+  cpu?: number | null;
+  memory_mb?: number | null;
+}
+
+export interface MechanicalMonitorResponse {
+  task_id: string;
+  running: boolean;
+  elapsed_seconds?: number | null;
+  cpu_cores_used?: number | null;
+  cpu_cores_requested?: number | null;
+  memory_mb?: number | null;
+  host_memory_available_mb?: number | null;
+  host_memory_total_mb?: number | null;
+  log_idle_seconds?: number | null;
+  load_step?: number | null;
+  substep?: number | null;
+  iteration?: number | null;
+  cumulative_iteration?: number | null;
+  log_text: string;
+  log_offset: number;
+  log_size: number;
+  log_reset: boolean;
+  convergence: MechanicalConvergencePoint[];
+  convergence_total: number;
+  convergence_truncated: boolean;
+  resources: MechanicalResourceSample[];
+}
+
+/** Mechanical 求解过程。logOffset 为 -1 时从日志末尾开始。 */
+export async function getMechanicalMonitor(taskId: string, logOffset = -1) {
+  const query = new URLSearchParams();
+  query.set("log_offset", String(logOffset));
+  return request<MechanicalMonitorResponse>(`/tasks/${taskId}/monitor?${query.toString()}`);
 }
 
 // ============= 任务重试接口 =============
