@@ -1118,8 +1118,10 @@ export default function TasksTable() {
           };
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "获取输出失败";
-        console.error(`[Outputs] 任务 ${taskId} 获取输出失败:`, err);
+        const raw = err instanceof Error ? err.message : "获取输出失败";
+        const message = raw === "Failed to fetch" ? "暂时连不上输出接口，列表仍可用" : raw;
+        // 不要把 Error 对象交给 console.error，Next.js 开发模式会把它当成未处理异常铺满页面。
+        console.warn(`[Outputs] 任务 ${taskId} 获取输出失败: ${message}`);
         applyTaskUpdate(taskId, (task) => ({
           ...task,
           outputsFetched: true,
@@ -1167,7 +1169,7 @@ export default function TasksTable() {
         try {
           data = (await response.json()) as TasksApiResponse;
         } catch (parseError) {
-          console.error("解析响应数据失败", parseError);
+          console.warn("解析响应数据失败", parseError instanceof Error ? parseError.message : parseError);
           throw new Error("服务器返回了无效的数据格式");
         }
 
@@ -1244,32 +1246,45 @@ export default function TasksTable() {
           if (!existingTask) {
             return newTask;
           }
+
+          // 列表接口没有输出文件。刷新时保留已经取到的结果，避免每 30 秒对所有成功任务再请求一遍。
+          const withClientState = (task: TableTask): TableTask => ({
+            ...task,
+            outputs: existingTask.outputs,
+            outputsFetched: existingTask.outputsFetched,
+            outputsLoading: existingTask.outputsLoading,
+            outputsError: existingTask.outputsError,
+            deleting: existingTask.deleting,
+            retrying: existingTask.retrying,
+            stopping: existingTask.stopping,
+            actionError: existingTask.actionError,
+          });
           
           // ⚡ 修复：如果本地状态是SUCCESS，但服务器返回的状态不是，优先使用本地状态
           // 这可以防止服务器返回的旧状态覆盖本地已更新的状态（特别是mechanical和maxwell模块）
           if (existingTask.status === "SUCCESS" && newTask.status !== "SUCCESS") {
             console.log(`⚠️ [fetchTasks] 任务 ${newTask.task_id} 本地状态是SUCCESS，但服务器返回的是 ${newTask.status}，保留本地SUCCESS状态`);
-            return {
+            return withClientState({
               ...newTask,
               status: "SUCCESS", // 保留本地SUCCESS状态
               progress_info: null, // ⚡ 修复：任务已完成，清除进度信息
-            };
+            });
           }
           
           // ⚡ 修复：如果任务状态是SUCCESS，清除旧的progress_info（避免显示过时的"正在求解"等信息）
           if (newTask.status === "SUCCESS") {
-            return {
+            return withClientState({
               ...newTask,
               progress_info: newTask.progress_info || null, // 使用服务器返回的最新progress_info（可能为null）
-            };
+            });
           }
           
           // 如果新任务没有 progress_info，但现有任务有，则保留现有的（仅当任务未完成时）
           if (!newTask.progress_info && existingTask.progress_info && newTask.status !== "SUCCESS") {
-            return { ...newTask, progress_info: existingTask.progress_info };
+            return withClientState({ ...newTask, progress_info: existingTask.progress_info });
           }
           
-          return newTask;
+          return withClientState(newTask);
         });
         
         if (supportsServerPaging) {
@@ -1401,7 +1416,8 @@ export default function TasksTable() {
               void fetchOutputsForTask(taskId);
             }, 300);
           }).catch((err) => {
-            console.error(`刷新任务列表失败:`, err);
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(`刷新任务列表失败: ${message}`);
             // 即使刷新失败，也尝试获取输出文件（可能已经可以从本地状态获取）
             setTimeout(() => {
               void fetchOutputsForTask(taskId);
