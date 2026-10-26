@@ -2,6 +2,10 @@
 const nextConfig = {
   // 启用 standalone 输出模式，用于 Docker 部署
   output: 'standalone',
+  // next dev 把 /api 反代到后端时，默认 30 秒就断开。复制较大输入会因此得到纯文本 Internal Server Error。
+  experimental: {
+    proxyTimeout: 300000,
+  },
   
   // 配置 API 代理：将 /api/* 请求代理到后端服务器
   async rewrites() {

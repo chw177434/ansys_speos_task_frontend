@@ -23,30 +23,19 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
 
   const text = await res.text();
   if (!res.ok) {
+    let errorMessage = text || res.statusText || `请求失败: ${res.status}`;
     try {
       const data = JSON.parse(text);
       const detail = data?.detail || data?.message;
-      
-      // 确保错误消息是字符串，而不是对象
-      let errorMessage: string;
-      if (typeof detail === "string") {
+      if (typeof detail === "string" && detail.trim()) {
         errorMessage = detail;
-      } else if (typeof detail === "object" && detail !== null) {
-        // 如果 detail 是对象，尝试序列化
-        try {
-          errorMessage = JSON.stringify(detail);
-        } catch {
-          errorMessage = String(detail);
-        }
-      } else {
-        errorMessage = text || res.statusText || `请求失败: ${res.status}`;
+      } else if (detail != null && typeof detail === "object") {
+        errorMessage = JSON.stringify(detail);
       }
-      
-      throw new Error(errorMessage);
-    } catch (err) {
-      if (err instanceof Error) throw err;
-      throw new Error(text || res.statusText || `请求失败: ${res.status}`);
+    } catch {
+      // 开发代理超时返回的是纯文本 Internal Server Error，不能再当成 JSON 解析失败。
     }
+    throw new Error(errorMessage);
   }
 
   if (!parseJson) return undefined as T;
