@@ -2621,7 +2621,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(300);
-                      setThreadCount("64");
+                      setThreadCount("16");
                       setInitializationMethod("hyb");
                       markFieldModified("dimension");
                       markFieldModified("precision");
@@ -2632,7 +2632,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(1000);
-                      setThreadCount("64");
+                      setThreadCount("16");
                       setInitializationMethod("hyb");
                       markFieldModified("dimension");
                       markFieldModified("precision");
@@ -2643,7 +2643,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setDimension("3d");
                       setPrecision("dp");
                       setIterations(5000);
-                      setThreadCount("128");
+                      setThreadCount("16");
                       setInitializationMethod("hyb");
                       markFieldModified("dimension");
                       markFieldModified("precision");
@@ -2769,16 +2769,16 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                       setThreadCount(event.target.value);
                       markFieldModified("threadCount");
                     }}
-                    placeholder="64"
+                    placeholder="16"
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-500">
-                    并行计算使用的 CPU 核心数。未填写时默认 64 核（服务器共 96 逻辑核）。
+                    留空时用服务器默认 16 核。这台机器 48 个物理核里只插了 4 条内存通道，单任务超过 24 核通常不会更快。
                   </p>
-                  {threadCount && Number(threadCount) > 80 && (
+                  {threadCount && Number(threadCount) > 24 && (
                     <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1">
                       <p className="text-xs text-amber-700">
-                        ⚠️ CPU 核心数过高可能会降低并行效率或影响同机其他任务
+                        ⚠️ 超过 24 核会占满求解池，并跨到另一路 CPU。这台机器内存通道少，墙钟时间不一定更短
                       </p>
                     </div>
                   )}
@@ -2861,7 +2861,7 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
               <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  核心数 (Thread Count) <span className="text-red-500">*</span>
+                  核心数 (Thread Count)
                 </label>
                 <input
                   type="number"
@@ -2871,10 +2871,10 @@ export default function UploadForm({ defaultSolverType = "speos", lockSolverType
                     setThreadCount(event.target.value);
                     markFieldModified("threadCount");
                   }}
-                  placeholder="8"
+                  placeholder="16"
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="mt-1 text-xs text-slate-500">并行核心数，建议值：8, 16, 32</p>
+                <p className="mt-1 text-xs text-slate-500">共享内存线程数，留空默认 16。这是一个进程里的多线程，不是多个 MPI 进程。</p>
               </div>
               
               <div>
