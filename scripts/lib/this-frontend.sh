@@ -45,6 +45,12 @@ _tf_is_zombie() {
     [[ "$(_tf_stat "$1")" == Z* ]]
 }
 
+# Next 退出时另起这个进程刷遥测，不监听端口。它常卡在 D（不可中断的磁盘等待），
+# SIGKILL 也杀不掉，不能因此拒绝重启。
+_tf_is_telemetry_flush() {
+    [[ "$(_tf_cmdline "$1")" == *"telemetry/detached-flush.js"* ]]
+}
+
 # 本工程前端进程（不含仅凭端口判断）
 this_frontend_owns_pid() {
     local pid="$1"
@@ -54,6 +60,7 @@ this_frontend_owns_pid() {
     _tf_is_protected_pid "$pid" && return 1
     ps -p "$pid" >/dev/null 2>&1 || return 1
     _tf_is_zombie "$pid" && return 1
+    _tf_is_telemetry_flush "$pid" && return 1
 
     cmd="$(_tf_cmdline "$pid")"
     [[ -n "$cmd" ]] || return 1
@@ -113,6 +120,7 @@ this_frontend_collect_pids() {
                 [[ -z "$child" ]] && continue
                 _tf_is_protected_pid "$child" && continue
                 _tf_is_zombie "$child" && continue
+                _tf_is_telemetry_flush "$child" && continue
                 seen["$child"]=1
             done < <(_tf_descendants "$root")
         fi
