@@ -36,6 +36,15 @@ _tf_is_protected_pid() {
     [[ "$pid" == "$$" || "$pid" == "$parent" ]]
 }
 
+_tf_stat() {
+    ps -p "$1" -o stat= 2>/dev/null | tr -d '[:space:]'
+}
+
+# 已退出但父进程还没回收的进程。ps 仍能看到，不能当成前端还在跑。
+_tf_is_zombie() {
+    [[ "$(_tf_stat "$1")" == Z* ]]
+}
+
 # 本工程前端进程（不含仅凭端口判断）
 this_frontend_owns_pid() {
     local pid="$1"
@@ -44,6 +53,7 @@ this_frontend_owns_pid() {
     [[ "$pid" =~ ^[0-9]+$ ]] || return 1
     _tf_is_protected_pid "$pid" && return 1
     ps -p "$pid" >/dev/null 2>&1 || return 1
+    _tf_is_zombie "$pid" && return 1
 
     cmd="$(_tf_cmdline "$pid")"
     [[ -n "$cmd" ]] || return 1
@@ -73,6 +83,7 @@ _tf_pidfile_is_our_launcher() {
     [[ "$pid" =~ ^[0-9]+$ ]] || return 1
     _tf_is_protected_pid "$pid" && return 1
     ps -p "$pid" >/dev/null 2>&1 || return 1
+    _tf_is_zombie "$pid" && return 1
 
     cmd="$(_tf_cmdline "$pid")"
     cwd="$(_tf_cwd "$pid")"
@@ -101,6 +112,7 @@ this_frontend_collect_pids() {
             while IFS= read -r child; do
                 [[ -z "$child" ]] && continue
                 _tf_is_protected_pid "$child" && continue
+                _tf_is_zombie "$child" && continue
                 seen["$child"]=1
             done < <(_tf_descendants "$root")
         fi
@@ -170,21 +182,47 @@ this_frontend_stop() {
         echo "  PID ${pid}: ${cmd:0:160}"
     done
 
-    kill -TERM "${pids[@]}" 2>/dev/null || true
-    sleep 1
+    local err
+    err="$(kill -TERM "${pids[@]}" 2>&1)" || echo "SIGTERM 未全部送达: ${err}"
 
-    local -a still=()
-    for pid in "${pids[@]}"; do
-        if ps -p "$pid" >/dev/null 2>&1; then
-            still+=("$pid")
+    # Next 退出时可能拉起新的 next-server，所以按当前进程再查，不只看最初那一份 PID。
+    if ! _tf_wait_frontend_clear; then
+        local -a still=()
+        while IFS= read -r pid; do
+            [[ -n "$pid" ]] && still+=("$pid")
+        done < <(this_frontend_collect_pids | sort -u)
+        if [[ ${#still[@]} -gt 0 ]]; then
+            err="$(kill -KILL "${still[@]}" 2>&1)" || echo "SIGKILL 未全部送达: ${err}"
+            _tf_wait_frontend_clear || true
         fi
-    done
-    if [[ ${#still[@]} -gt 0 ]]; then
-        kill -KILL "${still[@]}" 2>/dev/null || true
-        sleep 1
     fi
 
     rm -f "$THIS_FRONTEND_PID_FILE"
+
+    local -a left=()
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && left+=("$pid")
+    done < <(this_frontend_collect_pids | sort -u)
+    if [[ ${#left[@]} -gt 0 ]]; then
+        echo "这些前端进程仍在运行："
+        for pid in "${left[@]}"; do
+            cmd="$(_tf_cmdline "$pid")"
+            echo "  PID ${pid} stat=$(_tf_stat "$pid"): ${cmd:0:160}"
+        done
+        return 1
+    fi
+}
+
+# 最多等 10 秒。僵尸进程不计入。
+_tf_wait_frontend_clear() {
+    local i
+    for ((i = 0; i < 20; i++)); do
+        if ! this_frontend_collect_pids | grep -q .; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    return 1
 }
 
 # 0 = 端口可用或只被本工程占用；1 = 被其他应用占用（未结束对方）
